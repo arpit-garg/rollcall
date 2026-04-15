@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Hostel Attendance",
+    "slug": "hostel-attendance",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0f2d3c"
+    },
+    "android": {
+      "package": "com.college.hostelattendance"
+    },
+    "extra": {
+      "apiBaseUrl": "http://localhost:8080/api/v1"
+    }
+  }
+}

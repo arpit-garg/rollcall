@@ -1,0 +1,17 @@
+.omx/
+.codex/
+.codex/*
+!.codex/agents/
+!.codex/agents/**
+!.codex/skills/
+!.codex/skills/**
+.codex/skills/.system/**
+!.codex/prompts/
+!.codex/prompts/**
+AGENTS.md
+node_modules/
+dist/
+.env
+__pycache__/
+*.pyc
+*.log
