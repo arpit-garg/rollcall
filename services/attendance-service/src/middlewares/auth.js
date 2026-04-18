@@ -1,46 +1,49 @@
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 
-export function requireAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization;
-    const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+export function requireAuth(allowedRoles = []) {
+  return (req, res, next) => {
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return res.status(401).json({
         error: {
           code: "UNAUTHORIZED",
-          message: "Bearer token is required",
+          message: "Bearer token required",
           retryable: false
         }
       });
     }
 
-    req.user = jwt.verify(token, env.jwtSecret);
-    next();
-  } catch (_error) {
-    res.status(401).json({
-      error: {
-        code: "UNAUTHORIZED",
-        message: "Token is invalid or expired",
-        retryable: false
+    try {
+      const token = authHeader.replace("Bearer ", "");
+      const payload = jwt.verify(token, env.jwtSecret);
+
+      req.user = {
+        id: payload.sub,
+        role: payload.role,
+        hostelId: payload.hostelId
+      };
+
+      if (allowedRoles.length > 0 && !allowedRoles.includes(req.user.role)) {
+        return res.status(403).json({
+          error: {
+            code: "FORBIDDEN",
+            message: "Insufficient privileges",
+            retryable: false
+          }
+        });
       }
-    });
-  }
-}
 
-export function requireRole(role) {
-  return (req, res, next) => {
-    if (req.user?.role !== role) {
-      return res.status(403).json({
+      return next();
+    } catch (_error) {
+      return res.status(401).json({
         error: {
-          code: "FORBIDDEN",
-          message: `${role} role required`,
+          code: "UNAUTHORIZED",
+          message: "Token invalid or expired",
           retryable: false
         }
       });
     }
-
-    next();
   };
 }

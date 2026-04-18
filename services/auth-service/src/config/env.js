@@ -1,18 +1,31 @@
-const required = ["PORT", "DATABASE_URL", "JWT_SECRET", "REFRESH_TOKEN_SECRET"];
+import "dotenv/config";
 
-for (const key of required) {
-  if (!process.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}`);
+function parseTokenTtl(explicitValue, numericValue, suffix) {
+  if (explicitValue) {
+    return explicitValue;
   }
+
+  if (numericValue) {
+    return `${numericValue}${suffix}`;
+  }
+
+  return undefined;
 }
 
 export const env = {
-  port: Number(process.env.PORT),
-  databaseUrl: process.env.DATABASE_URL,
-  jwtSecret: process.env.JWT_SECRET,
-  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET,
-  accessTokenTtl: process.env.ACCESS_TOKEN_TTL ?? "15m",
-  refreshTokenTtl: process.env.REFRESH_TOKEN_TTL ?? "7d",
+  port: Number(process.env.AUTH_SERVICE_PORT || process.env.PORT || 3001),
+  jwtSecret: process.env.JWT_SECRET || "dev-access-secret",
+  refreshSecret: process.env.REFRESH_TOKEN_SECRET || "dev-refresh-secret",
+  refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || "dev-refresh-secret",
+  accessTokenTtl:
+    parseTokenTtl(process.env.ACCESS_TOKEN_TTL, process.env.ACCESS_TOKEN_TTL_MINUTES, "m") ||
+    "15m",
+  refreshTokenTtl:
+    parseTokenTtl(process.env.REFRESH_TOKEN_TTL, process.env.REFRESH_TOKEN_TTL_DAYS, "d") ||
+    "7d",
   cookieName: process.env.REFRESH_TOKEN_COOKIE_NAME ?? "refreshToken",
-  appOrigin: process.env.APP_ORIGIN ?? "*"
+  clientOrigin: (process.env.CORS_ORIGIN || process.env.APP_ORIGIN || "http://localhost:5173")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
 };
