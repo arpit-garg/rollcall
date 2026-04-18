@@ -1,6 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
-import { attendanceStore } from "../services/attendanceStore.js";
+import {
+  getEnrollmentStatus,
+  markReEnrollmentRequired,
+  startEnrollment
+} from "../services/enrollmentService.js";
 import { runEnrollmentPipeline } from "../services/pipeline.js";
 
 const upload = multer({
@@ -10,7 +14,7 @@ const upload = multer({
 
 const router = Router();
 
-router.post("/face", upload.single("image"), (req, res) => {
+router.post("/face", upload.single("image"), async (req, res, next) => {
   if (req.user.role !== "student") {
     return res.status(403).json({
       error: {
@@ -31,19 +35,23 @@ router.post("/face", upload.single("image"), (req, res) => {
     });
   }
 
-  attendanceStore.startEnrollment(req.user.id);
-  void runEnrollmentPipeline({
-    studentId: req.user.id,
-    imageMeta: req.file
-  });
+  try {
+    await startEnrollment(req.user.id);
+    void runEnrollmentPipeline({
+      studentId: req.user.id,
+      imageMeta: req.file
+    });
 
-  res.status(202).json({
-    status: "processing",
-    message: "Template generation queued"
-  });
+    return res.status(202).json({
+      status: "processing",
+      message: "Template generation queued"
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
-router.get("/status", (req, res) => {
+router.get("/status", async (req, res, next) => {
   if (req.user.role !== "student") {
     return res.status(403).json({
       error: {
@@ -54,10 +62,14 @@ router.get("/status", (req, res) => {
     });
   }
 
-  res.status(200).json(attendanceStore.getEnrollmentStatus(req.user.id));
+  try {
+    return res.status(200).json(await getEnrollmentStatus(req.user.id));
+  } catch (error) {
+    return next(error);
+  }
 });
 
-router.delete("/face", (req, res) => {
+router.delete("/face", async (req, res, next) => {
   if (req.user.role !== "warden") {
     return res.status(403).json({
       error: {
@@ -80,11 +92,15 @@ router.delete("/face", (req, res) => {
     });
   }
 
-  attendanceStore.invalidateEnrollment(studentId);
-  return res.status(200).json({
-    status: "invalidated",
-    studentId
-  });
+  try {
+    await markReEnrollmentRequired(studentId);
+    return res.status(200).json({
+      status: "invalidated",
+      studentId
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 export { router as enrollmentRoutes };

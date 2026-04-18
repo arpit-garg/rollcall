@@ -1,6 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
-import { attendanceStore } from "../services/attendanceStore.js";
+import {
+  createAttendanceOverride,
+  createSubmission,
+  getHistory,
+  getJob,
+  getOverrides
+} from "../services/attendanceService.js";
 import { runAttendancePipeline } from "../services/pipeline.js";
 
 const router = Router();
@@ -9,7 +15,7 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-router.post("/submit", upload.single("image"), (req, res, next) => {
+router.post("/submit", upload.single("image"), async (req, res, next) => {
   if (req.user.role !== "student") {
     return res.status(403).json({
       error: {
@@ -35,13 +41,12 @@ router.post("/submit", upload.single("image"), (req, res, next) => {
       });
     }
 
-    const result = attendanceStore.createSubmission({
+    const result = await createSubmission({
       studentId: req.user.id,
       hostelId: req.user.hostelId,
       latitude,
       longitude,
-      idempotencyKey,
-      imageMeta: req.file
+      idempotencyKey
     });
 
     if (result.duplicate) {
@@ -68,7 +73,7 @@ router.post("/submit", upload.single("image"), (req, res, next) => {
   }
 });
 
-router.get("/job/:jobId", (req, res, next) => {
+router.get("/job/:jobId", async (req, res, next) => {
   if (req.user.role !== "student") {
     return res.status(403).json({
       error: {
@@ -80,7 +85,7 @@ router.get("/job/:jobId", (req, res, next) => {
   }
 
   try {
-    const record = attendanceStore.getJob(req.params.jobId, req.user.id);
+    const record = await getJob(req.params.jobId, req.user.id);
     return res.status(200).json({
       jobId: record.jobId,
       status: record.status,
@@ -94,7 +99,7 @@ router.get("/job/:jobId", (req, res, next) => {
   }
 });
 
-router.get("/my-history", (req, res) => {
+router.get("/my-history", async (req, res, next) => {
   if (req.user.role !== "student") {
     return res.status(403).json({
       error: {
@@ -105,12 +110,16 @@ router.get("/my-history", (req, res) => {
     });
   }
 
-  res.status(200).json({
-    data: attendanceStore.getStudentHistory(req.user.id)
-  });
+  try {
+    return res.status(200).json({
+      data: await getHistory(req.user.id)
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
-router.post("/:recordId/override", (req, res, next) => {
+router.post("/:recordId/override", async (req, res, next) => {
   if (req.user.role !== "warden") {
     return res.status(403).json({
       error: {
@@ -123,7 +132,12 @@ router.post("/:recordId/override", (req, res, next) => {
 
   try {
     const { reason } = req.body ?? {};
-    const result = attendanceStore.createOverride(req.params.recordId, req.user.id, reason);
+    const result = await createAttendanceOverride({
+      recordId: req.params.recordId,
+      wardenId: req.user.id,
+      hostelId: req.user.hostelId,
+      reason
+    });
 
     return res.status(200).json({
       status: result.record.status,
@@ -134,8 +148,8 @@ router.post("/:recordId/override", (req, res, next) => {
   }
 });
 
-router.get("/overrides", (_req, res) => {
-  if (_req.user.role !== "warden") {
+router.get("/overrides", async (req, res, next) => {
+  if (req.user.role !== "warden") {
     return res.status(403).json({
       error: {
         code: "FORBIDDEN",
@@ -145,9 +159,13 @@ router.get("/overrides", (_req, res) => {
     });
   }
 
-  res.status(200).json({
-    data: attendanceStore.listOverrides()
-  });
+  try {
+    return res.status(200).json({
+      data: await getOverrides(req.user.hostelId)
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 export { router as attendanceRoutes };
