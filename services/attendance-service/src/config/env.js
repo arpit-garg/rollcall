@@ -22,5 +22,10 @@ export const env = {
   maxAttemptsPerWindow: Number(process.env.MAX_ATTEMPTS_PER_WINDOW || 3),
   attendanceIdempotencyNamespace:
     process.env.ATTENDANCE_IDEMPOTENCY_NAMESPACE || "attendance:idempotency",
+  verificationQueueName:
+    process.env.VERIFICATION_QUEUE_NAME || "attendance:verification:queue",
+  verificationDemoDelayMs: Number(process.env.VERIFICATION_DEMO_DELAY_MS || 1500),
+  enableVerificationWorker:
+    String(process.env.ENABLE_VERIFICATION_WORKER || "true") === "true",
   enableDemoResolution: String(process.env.ENABLE_DEMO_RESOLUTION || "true") === "true"
 };

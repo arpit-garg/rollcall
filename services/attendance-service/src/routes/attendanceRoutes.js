@@ -7,7 +7,7 @@ import {
   getJob,
   getOverrides
 } from "../services/attendanceService.js";
-import { runAttendancePipeline } from "../services/pipeline.js";
+import { enqueueVerificationJob } from "../services/verificationQueue.js";
 
 const router = Router();
 const upload = multer({
@@ -57,10 +57,10 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
       });
     }
 
-    void runAttendancePipeline({
-      studentId: req.user.id,
+    await enqueueVerificationJob({
       jobId: result.record.jobId,
-      imageMeta: req.file
+      studentId: req.user.id,
+      imageName: req.file.originalname || "camera-capture.jpg"
     });
 
     return res.status(202).json({

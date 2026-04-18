@@ -28,11 +28,17 @@ const redis = createClient({
 const { createApp } = await import("../src/app.js");
 const { closePool } = await import("../src/config/db.js");
 const { closeRedisClient } = await import("../src/config/redis.js");
+const { getVerificationQueueStatus } = await import("../src/services/verificationQueue.js");
+const {
+  startVerificationWorker,
+  stopVerificationWorker
+} = await import("../src/services/verificationQueue.js");
 
 const app = createApp();
 const server = app.listen(0);
 
 await once(server, "listening");
+startVerificationWorker();
 
 const port = server.address().port;
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -113,6 +119,7 @@ beforeEach(async () => {
 });
 
 after(async () => {
+  await stopVerificationWorker();
   server.close();
   await once(server, "close");
   await redis.quit();
@@ -237,6 +244,10 @@ test("history and job polling reflect resolved attendance records", async () => 
   assert.equal(historyResponse.status, 200);
   assert.equal(historyResponse.json.data[0].jobId, submitBody.jobId);
   assert.equal(historyResponse.json.data[0].status, "verified");
+
+  const queueStatus = await getVerificationQueueStatus();
+  assert.equal(queueStatus.workerActive, true);
+  assert.ok(queueStatus.processedJobs >= 1);
 });
 
 test("warden override persists override and audit logs", async () => {

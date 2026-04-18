@@ -1,10 +1,12 @@
 import cors from "cors";
 import express from "express";
+import { env } from "./config/env.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { requireAuth } from "./middlewares/auth.js";
 import { attendanceRoutes } from "./routes/attendanceRoutes.js";
 import { enrollmentRoutes } from "./routes/enrollmentRoutes.js";
 import { windowRoutes } from "./routes/windowRoutes.js";
+import { getVerificationQueueStatus } from "./services/verificationQueue.js";
 
 export function createApp() {
   const app = express();
@@ -17,11 +19,19 @@ export function createApp() {
   );
   app.use(express.json());
 
-  app.get("/health", (_req, res) => {
-    res.status(200).json({
-      status: "ok",
-      service: "attendance-service"
-    });
+  app.get("/health", async (_req, res, next) => {
+    try {
+      res.status(200).json({
+        status: "ok",
+        service: "attendance-service",
+        verificationMode: env.enableVerificationWorker
+          ? "single-process worker enabled"
+          : "worker disabled",
+        queue: await getVerificationQueueStatus()
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.use("/api/v1/enrollment", requireAuth(["student", "warden"]), enrollmentRoutes);
