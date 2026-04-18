@@ -8,6 +8,7 @@
     "check:auth": "node --check services/auth-service/src/server.js",
     "check:attendance": "node --check services/attendance-service/src/server.js",
     "check:ml": "python -m compileall services/ml-service/app",
-    "check": "npm run check:auth && npm run check:attendance && npm run check:ml"
+    "check": "npm run check:auth && npm run check:attendance && npm run check:ml",
+    "test:auth": "npm test --prefix services/auth-service"
   }
 }
