@@ -3,6 +3,7 @@ import { after, before, beforeEach, test } from "node:test";
 import { once } from "node:events";
 import pg from "pg";
 import jwt from "jsonwebtoken";
+import { Client } from "minio";
 import { createClient } from "redis";
 
 process.env.ATTENDANCE_SERVICE_PORT = "0";
@@ -16,6 +17,10 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "change-me-access-secret";
 process.env.ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8000";
 process.env.ENABLE_DEMO_RESOLUTION = "true";
 process.env.MAX_ATTEMPTS_PER_WINDOW = "3";
+process.env.MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || "127.0.0.1:9000";
+process.env.MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || "minioadmin";
+process.env.MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || "minioadmin";
+process.env.MINIO_BUCKET = process.env.MINIO_BUCKET || "face-templates";
 
 const { Pool } = pg;
 const pool = new Pool({
@@ -23,6 +28,13 @@ const pool = new Pool({
 });
 const redis = createClient({
   url: process.env.REDIS_URL
+});
+const minio = new Client({
+  endPoint: process.env.MINIO_ENDPOINT.split(":")[0],
+  port: Number(process.env.MINIO_ENDPOINT.split(":")[1] || "9000"),
+  useSSL: false,
+  accessKey: process.env.MINIO_ACCESS_KEY,
+  secretKey: process.env.MINIO_SECRET_KEY
 });
 
 const { createApp } = await import("../src/app.js");
@@ -94,8 +106,39 @@ async function createWindowForTests() {
   return response.json.id;
 }
 
+async function listObjectNames(prefix) {
+  const objects = [];
+  await new Promise((resolve, reject) => {
+    const stream = minio.listObjects(process.env.MINIO_BUCKET, prefix, true);
+    stream.on("data", (objectInfo) => objects.push(objectInfo.name));
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+  return objects;
+}
+
+async function waitFor(assertionFn, timeoutMs = 5000, intervalMs = 200) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await assertionFn();
+
+    if (result) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error(`Condition not met within ${timeoutMs}ms`);
+}
+
 before(async () => {
   await redis.connect();
+  const exists = await minio.bucketExists(process.env.MINIO_BUCKET);
+  if (!exists) {
+    await minio.makeBucket(process.env.MINIO_BUCKET);
+  }
 });
 
 beforeEach(async () => {
@@ -116,6 +159,11 @@ beforeEach(async () => {
     `,
     [studentId]
   );
+
+  const existingObjects = await listObjectNames("");
+  for (const objectName of existingObjects) {
+    await minio.removeObject(process.env.MINIO_BUCKET, objectName);
+  }
 });
 
 after(async () => {
@@ -202,6 +250,11 @@ test("student submit persists record and duplicate submit returns existing job i
 
   const keys = await redis.keys("attendance:idempotency:*");
   assert.equal(keys.length, 1);
+
+  await waitFor(async () => {
+    const tempObjects = await listObjectNames("temp/verification/");
+    return tempObjects.length === 0;
+  });
 });
 
 test("history and job polling reflect resolved attendance records", async () => {
@@ -224,7 +277,15 @@ test("history and job polling reflect resolved attendance records", async () => 
   const submitBody = await submitResponse.json();
   assert.equal(submitResponse.status, 202);
 
-  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await waitFor(async () => {
+    const jobResponse = await jsonRequest(`${baseUrl}/api/v1/attendance/job/${submitBody.jobId}`, {
+      headers: {
+        ...studentAuthHeader
+      }
+    });
+
+    return jobResponse.status === 200 && jobResponse.json.status === "verified";
+  });
 
   const jobResponse = await jsonRequest(`${baseUrl}/api/v1/attendance/job/${submitBody.jobId}`, {
     headers: {
@@ -250,6 +311,57 @@ test("history and job polling reflect resolved attendance records", async () => 
   assert.ok(queueStatus.processedJobs >= 1);
 });
 
+test("enrollment stores template ref in minio and cleans temp object", async () => {
+  const form = new FormData();
+  form.append("image", new Blob(["enrollment-image"], { type: "image/jpeg" }), "enroll.jpg");
+
+  const response = await fetch(`${baseUrl}/api/v1/enrollment/face`, {
+    method: "POST",
+    headers: {
+      ...studentAuthHeader
+    },
+    body: form
+  });
+
+  const body = await response.json();
+  assert.equal(response.status, 202);
+  assert.equal(body.status, "processing");
+
+  await waitFor(async () => {
+    const statusResponse = await jsonRequest(`${baseUrl}/api/v1/enrollment/status`, {
+      headers: {
+        ...studentAuthHeader
+      }
+    });
+
+    return statusResponse.status === 200 && statusResponse.json.status === "enrolled";
+  });
+
+  const statusResponse = await jsonRequest(`${baseUrl}/api/v1/enrollment/status`, {
+    headers: {
+      ...studentAuthHeader
+    }
+  });
+
+  assert.equal(statusResponse.status, 200);
+  assert.equal(statusResponse.json.status, "enrolled");
+
+  const { rows } = await pool.query(
+    "SELECT embedding_ref, is_valid FROM face_templates WHERE student_id = $1",
+    [studentId]
+  );
+
+  assert.equal(rows[0].is_valid, true);
+  assert.ok(rows[0].embedding_ref.startsWith("templates/"));
+  const templateExists = await minio.statObject(process.env.MINIO_BUCKET, rows[0].embedding_ref);
+  assert.ok(templateExists);
+
+  await waitFor(async () => {
+    const tempObjects = await listObjectNames("temp/enrollment/");
+    return tempObjects.length === 0;
+  });
+});
+
 test("warden override persists override and audit logs", async () => {
   const windowId = await createWindowForTests();
 
@@ -268,7 +380,15 @@ test("warden override persists override and audit logs", async () => {
   });
 
   assert.equal(submitResponse.status, 202);
-  await new Promise((resolve) => setTimeout(resolve, 1700));
+  await waitFor(async () => {
+    const recordsResponse = await jsonRequest(`${baseUrl}/api/v1/windows/${windowId}/records`, {
+      headers: {
+        ...wardenAuthHeader
+      }
+    });
+
+    return recordsResponse.status === 200 && recordsResponse.json.data.length > 0;
+  });
 
   const recordsResponse = await jsonRequest(`${baseUrl}/api/v1/windows/${windowId}/records`, {
     headers: {

@@ -3,18 +3,20 @@ from pydantic import BaseModel
 
 class EnrollmentRequest(BaseModel):
     studentId: str
-    imageName: str
+    imageObjectKey: str
 
 
 class EnrollmentResponse(BaseModel):
     status: str
     modelVersion: str
+    embeddingRef: str
 
 
 class VerificationRequest(BaseModel):
     studentId: str
     jobId: str
-    imageName: str
+    imageObjectKey: str
+    templateRef: str
     similarityThreshold: float
     livenessThreshold: float
 

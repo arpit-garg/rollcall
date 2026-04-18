@@ -22,6 +22,13 @@ export async function getEnrollmentStatus(studentId) {
   }
 
   if (!template.is_valid) {
+    if (template.model_version === "processing") {
+      return {
+        status: "processing",
+        updatedAt: template.enrolled_at
+      };
+    }
+
     return {
       status: "re_enrollment_required",
       updatedAt: template.enrolled_at
@@ -57,6 +64,22 @@ export async function invalidateTemplate(studentId) {
       UPDATE face_templates
       SET is_valid = false
       WHERE student_id = $1
+    `,
+    [studentId]
+  );
+}
+
+export async function setEnrollmentProcessing(studentId) {
+  await pool.query(
+    `
+      INSERT INTO face_templates (student_id, embedding_ref, model_version, is_valid)
+      VALUES ($1, 'processing://pending', 'processing', false)
+      ON CONFLICT (student_id) DO UPDATE
+      SET
+        embedding_ref = 'processing://pending',
+        model_version = 'processing',
+        is_valid = false,
+        enrolled_at = now()
     `,
     [studentId]
   );

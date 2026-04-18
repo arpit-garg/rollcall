@@ -104,7 +104,8 @@ export async function createSubmission({
 
   return {
     duplicate: false,
-    record
+    record,
+    templateRef: template.embedding_ref
   };
 }
 

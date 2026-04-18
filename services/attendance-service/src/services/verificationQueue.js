@@ -18,50 +18,12 @@ let stopRequested = false;
 let workerRedisClient;
 let workerConnectPromise;
 
-function wait(milliseconds) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function deterministicOutcome(imageName) {
-  const lowerName = imageName.toLowerCase();
-
-  if (lowerName.includes("spoof") || lowerName.includes("photo")) {
-    return {
-      status: "failed",
-      faceScore: 0.61,
-      livenessScore: 0.22
-    };
-  }
-
-  if (lowerName.includes("mismatch")) {
-    return {
-      status: "failed",
-      faceScore: 0.58,
-      livenessScore: 0.95
-    };
-  }
-
-  return {
-    status: "verified",
-    faceScore: 0.91,
-    livenessScore: 0.96
-  };
-}
-
 async function processVerificationJob(job) {
-  if (env.enableDemoResolution) {
-    await wait(env.verificationDemoDelayMs);
-    return deterministicOutcome(job.imageName);
-  }
-
   return requestAttendanceVerification({
     studentId: job.studentId,
     jobId: job.jobId,
-    imageMeta: {
-      originalname: job.imageName
-    }
+    imageObjectKey: job.imageObjectKey,
+    templateRef: job.templateRef
   });
 }
 

@@ -7,6 +7,10 @@ export const env = {
   redisUrl: process.env.REDIS_URL || "redis://127.0.0.1:6379",
   jwtSecret: process.env.JWT_SECRET || "dev-access-secret",
   mlServiceUrl: process.env.ML_SERVICE_URL || "http://localhost:8000",
+  minioEndpoint: process.env.MINIO_ENDPOINT || "127.0.0.1:9000",
+  minioAccessKey: process.env.MINIO_ACCESS_KEY || "minioadmin",
+  minioSecretKey: process.env.MINIO_SECRET_KEY || "minioadmin",
+  minioBucket: process.env.MINIO_BUCKET || "face-templates",
   hostelCenterLat: Number(
     process.env.DEMO_HOSTEL_CENTER_LAT || process.env.HOSTEL_CENTER_LAT || 28.613939
   ),

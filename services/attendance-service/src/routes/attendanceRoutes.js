@@ -7,6 +7,8 @@ import {
   getJob,
   getOverrides
 } from "../services/attendanceService.js";
+import { resolveAttendanceRecord } from "../services/attendanceService.js";
+import { removeObject, uploadTempObject } from "../services/objectStorage.js";
 import { enqueueVerificationJob } from "../services/verificationQueue.js";
 
 const router = Router();
@@ -57,11 +59,31 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
       });
     }
 
-    await enqueueVerificationJob({
-      jobId: result.record.jobId,
+    const imageObjectKey = await uploadTempObject({
+      category: "verification",
       studentId: req.user.id,
-      imageName: req.file.originalname || "camera-capture.jpg"
+      imageName: req.file.originalname || "camera-capture.jpg",
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype
     });
+
+    try {
+      await enqueueVerificationJob({
+        jobId: result.record.jobId,
+        studentId: req.user.id,
+        imageName: req.file.originalname || "camera-capture.jpg",
+        imageObjectKey,
+        templateRef: result.templateRef
+      });
+    } catch (error) {
+      await removeObject(imageObjectKey);
+      await resolveAttendanceRecord(result.record.jobId, {
+        status: "failed",
+        faceScore: null,
+        livenessScore: null
+      });
+      throw error;
+    }
 
     return res.status(202).json({
       jobId: result.record.jobId,

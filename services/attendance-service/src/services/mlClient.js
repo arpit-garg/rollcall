@@ -1,6 +1,6 @@
 import { env } from "../config/env.js";
 
-export async function requestEnrollmentProcessing({ studentId, imageMeta }) {
+export async function requestEnrollmentProcessing({ studentId, imageObjectKey }) {
   const response = await fetch(`${env.mlServiceUrl}/api/v1/internal/enroll`, {
     method: "POST",
     headers: {
@@ -8,7 +8,7 @@ export async function requestEnrollmentProcessing({ studentId, imageMeta }) {
     },
     body: JSON.stringify({
       studentId,
-      imageName: imageMeta?.originalname || "camera-capture.jpg"
+      imageObjectKey
     })
   });
 
@@ -19,7 +19,7 @@ export async function requestEnrollmentProcessing({ studentId, imageMeta }) {
   return response.json();
 }
 
-export async function requestAttendanceVerification({ studentId, jobId, imageMeta }) {
+export async function requestAttendanceVerification({ studentId, jobId, imageObjectKey, templateRef }) {
   const response = await fetch(`${env.mlServiceUrl}/api/v1/internal/verify`, {
     method: "POST",
     headers: {
@@ -28,7 +28,8 @@ export async function requestAttendanceVerification({ studentId, jobId, imageMet
     body: JSON.stringify({
       studentId,
       jobId,
-      imageName: imageMeta?.originalname || "camera-capture.jpg",
+      imageObjectKey,
+      templateRef,
       similarityThreshold: env.similarityThreshold,
       livenessThreshold: env.livenessThreshold
     })

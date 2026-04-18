@@ -5,6 +5,7 @@ import {
   markReEnrollmentRequired,
   startEnrollment
 } from "../services/enrollmentService.js";
+import { uploadTempObject } from "../services/objectStorage.js";
 import { runEnrollmentPipeline } from "../services/pipeline.js";
 
 const upload = multer({
@@ -37,9 +38,17 @@ router.post("/face", upload.single("image"), async (req, res, next) => {
 
   try {
     await startEnrollment(req.user.id);
+    const imageObjectKey = await uploadTempObject({
+      category: "enrollment",
+      studentId: req.user.id,
+      imageName: req.file.originalname || "camera-capture.jpg",
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype
+    });
+
     void runEnrollmentPipeline({
       studentId: req.user.id,
-      imageMeta: req.file
+      imageObjectKey
     });
 
     return res.status(202).json({
