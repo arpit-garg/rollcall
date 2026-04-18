@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { once } from "node:events";
 import pg from "pg";
+import { createClient } from "redis";
 
 process.env.AUTH_SERVICE_PORT = "0";
 process.env.DATABASE_URL =
@@ -20,9 +21,13 @@ const { Pool } = pg;
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
+const redis = createClient({
+  url: process.env.REDIS_URL
+});
 
 const { createApp } = await import("../src/app.js");
 const { closePool } = await import("../src/config/db.js");
+const { closeRedisClient } = await import("../src/config/redis.js");
 
 const app = createApp();
 const server = app.listen(0);
@@ -39,13 +44,19 @@ function parseRefreshToken(setCookieHeader) {
     .replace("refreshToken=", "");
 }
 
-before(async () => {});
+before(async () => {
+  await redis.connect();
+});
 
-beforeEach(async () => {});
+beforeEach(async () => {
+  await redis.flushDb();
+});
 
 after(async () => {
   server.close();
   await once(server, "close");
+  await redis.quit();
+  await closeRedisClient();
   await closePool();
   await pool.end();
 });
