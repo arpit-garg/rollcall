@@ -1,6 +1,8 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
 import OverrideLogPage from "./pages/OverrideLogPage.jsx";
+import { useAuth } from "./context/AuthContext.jsx";
 
 const linkClass = ({ isActive }) =>
   [
@@ -9,6 +11,20 @@ const linkClass = ({ isActive }) =>
   ].join(" ");
 
 export default function App() {
+  const { isAuthenticated, isHydrated, logout, user } = useAuth();
+
+  if (!isHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-mist text-steel">
+        Preparing dashboard...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="min-h-screen bg-mist text-ink">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
@@ -23,14 +39,26 @@ export default function App() {
                 Monitor attendance windows, review failed verifications, and track manual overrides.
               </p>
             </div>
-            <nav className="flex gap-3">
-              <NavLink to="/" end className={linkClass}>
-                Dashboard
-              </NavLink>
-              <NavLink to="/overrides" className={linkClass}>
-                Override Log
-              </NavLink>
-            </nav>
+            <div className="flex flex-col gap-3 lg:items-end">
+              <nav className="flex gap-3">
+                <NavLink to="/" end className={linkClass}>
+                  Dashboard
+                </NavLink>
+                <NavLink to="/overrides" className={linkClass}>
+                  Override Log
+                </NavLink>
+              </nav>
+              <div className="flex items-center gap-3 text-sm text-white/80">
+                <span>{user?.name}</span>
+                <button
+                  className="rounded-full border border-white/25 px-4 py-2 font-semibold text-white transition hover:bg-white/10"
+                  type="button"
+                  onClick={logout}
+                >
+                  Log Out
+                </button>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -38,6 +66,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/overrides" element={<OverrideLogPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>

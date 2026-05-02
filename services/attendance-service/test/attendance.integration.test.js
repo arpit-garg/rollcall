@@ -5,19 +5,20 @@ import pg from "pg";
 import jwt from "jsonwebtoken";
 import { Client } from "minio";
 import { createClient } from "redis";
+import {
+  resolveDatabaseUrl,
+  resolveMinioEndpoint,
+  resolveRedisUrl
+} from "../../test-support/connectionStrings.mjs";
 
 process.env.ATTENDANCE_SERVICE_PORT = "0";
-process.env.DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://postgres:postgres@127.0.0.1:5432/hostel_attendance";
-process.env.REDIS_URL =
-  process.env.TEST_REDIS_URL || process.env.REDIS_URL || "redis://127.0.0.1:6379/14";
+process.env.DATABASE_URL = resolveDatabaseUrl();
+process.env.REDIS_URL = resolveRedisUrl(14);
 process.env.JWT_SECRET = process.env.JWT_SECRET || "change-me-access-secret";
 process.env.ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8000";
 process.env.ENABLE_DEMO_RESOLUTION = "true";
 process.env.MAX_ATTEMPTS_PER_WINDOW = "3";
-process.env.MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || "127.0.0.1:9000";
+process.env.MINIO_ENDPOINT = resolveMinioEndpoint();
 process.env.MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || "minioadmin";
 process.env.MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || "minioadmin";
 process.env.MINIO_BUCKET = process.env.MINIO_BUCKET || "face-templates";
@@ -428,4 +429,15 @@ test("warden override persists override and audit logs", async () => {
   assert.equal(overrideRows[0].reason, "Student verified in person");
   assert.ok(auditRows.some((row) => row.action === "ATTENDANCE_OVERRIDE"));
   assert.ok(auditRows.some((row) => row.action === "ATTENDANCE_SUBMITTED"));
+
+  const overridesResponse = await jsonRequest(`${baseUrl}/api/v1/attendance/overrides`, {
+    headers: {
+      ...wardenAuthHeader
+    }
+  });
+
+  assert.equal(overridesResponse.status, 200);
+  assert.equal(overridesResponse.json.data[0].attendanceRecordId, recordId);
+  assert.equal(overridesResponse.json.data[0].studentName, "Aarav Student");
+  assert.equal(overridesResponse.json.data[0].wardenName, "Meera Warden");
 });

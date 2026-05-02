@@ -219,10 +219,17 @@ export async function listOverrides(hostelId) {
         o.attendance_record_id,
         o.warden_id,
         o.reason,
-        o.override_at
+        o.override_at,
+        ar.student_id,
+        ar.submitted_at,
+        student.name AS student_name,
+        student.room_number,
+        warden.name AS warden_name
       FROM overrides o
       INNER JOIN attendance_records ar ON ar.id = o.attendance_record_id
       INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+      INNER JOIN users student ON student.id = ar.student_id
+      INNER JOIN users warden ON warden.id = o.warden_id
       WHERE aw.hostel_id = $1
       ORDER BY o.override_at DESC
     `,
@@ -233,7 +240,12 @@ export async function listOverrides(hostelId) {
     id: row.id,
     attendanceRecordId: row.attendance_record_id,
     wardenId: row.warden_id,
+    wardenName: row.warden_name,
+    studentId: row.student_id,
+    studentName: row.student_name,
+    roomNumber: row.room_number,
     reason: row.reason,
+    submittedAt: row.submitted_at,
     overrideAt: row.override_at
   }));
 }

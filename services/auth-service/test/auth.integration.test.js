@@ -3,14 +3,11 @@ import { after, before, beforeEach, test } from "node:test";
 import { once } from "node:events";
 import pg from "pg";
 import { createClient } from "redis";
+import { resolveDatabaseUrl, resolveRedisUrl } from "../../test-support/connectionStrings.mjs";
 
 process.env.AUTH_SERVICE_PORT = "0";
-process.env.DATABASE_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://postgres:postgres@127.0.0.1:5432/hostel_attendance";
-process.env.REDIS_URL =
-  process.env.TEST_REDIS_URL || process.env.REDIS_URL || "redis://127.0.0.1:6379/15";
+process.env.DATABASE_URL = resolveDatabaseUrl();
+process.env.REDIS_URL = resolveRedisUrl(15);
 process.env.JWT_SECRET = process.env.JWT_SECRET || "phase2-test-access-secret";
 process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || "phase2-test-refresh-secret";
 process.env.ACCESS_TOKEN_TTL_MINUTES = process.env.ACCESS_TOKEN_TTL_MINUTES || "15";
