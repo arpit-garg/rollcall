@@ -4,6 +4,7 @@ const toneStyles = {
   dark: { backgroundColor: "#12384b", textColor: "#f7fbfc", labelColor: "#8ed1c4" },
   success: { backgroundColor: "#1f7a5c", textColor: "#f7fbfc", labelColor: "#d7f9ef" },
   accent: { backgroundColor: "#ef8354", textColor: "#081f29", labelColor: "#4f2b1d" },
+  danger: { backgroundColor: "#b42318", textColor: "#fef3f2", labelColor: "#fecaca" },
   light: { backgroundColor: "#f7fbfc", textColor: "#0f2d3c", labelColor: "#5c677d" }
 };
 

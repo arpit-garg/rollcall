@@ -10,11 +10,22 @@ import {
 import { resolveAttendanceRecord } from "../services/attendanceService.js";
 import { removeObject, uploadTempObject } from "../services/objectStorage.js";
 import { enqueueVerificationJob } from "../services/verificationQueue.js";
+import { getCurrentWindowForHostel } from "../services/windowService.js";
 
 const router = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+router.get("/current-window", async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      data: await getCurrentWindowForHostel(req.user.hostelId)
+    });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 router.post("/submit", upload.single("image"), async (req, res, next) => {

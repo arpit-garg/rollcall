@@ -12,7 +12,22 @@
       "package": "com.college.hostelattendance"
     },
     "extra": {
-      "apiBaseUrl": "http://localhost:8080/api/v1"
-    }
+      "defaultServerOrigin": "http://10.0.2.2"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Hostel Attendance to capture your face for enrollment and attendance verification."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Hostel Attendance to use your location while marking attendance."
+        }
+      ],
+      "expo-secure-store"
+    ]
   }
 }

@@ -92,6 +92,7 @@ test("login returns access token and refresh cookie for seeded student", async (
   const setCookie = response.headers.getSetCookie();
 
   assert.ok(body.accessToken);
+  assert.ok(body.refreshToken);
   assert.equal(body.user.role, "student");
   assert.equal(body.user.hostelId, "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4");
   assert.ok(setCookie.some((header) => header.startsWith("refreshToken=")));

@@ -88,6 +88,7 @@ router.post("/login", async (req, res, next) => {
       .status(200)
       .json({
         accessToken,
+        refreshToken,
         user: {
           id: user.id,
           role: user.role,

@@ -1,31 +1,219 @@
-import { createContext, useContext, useState } from "react";
+import * as SecureStore from "expo-secure-store";
+import { createContext, useContext, useEffect, useState } from "react";
+import {
+  attendanceRequest,
+  authRequest,
+  getDefaultServerOrigin,
+  normalizeServerOrigin
+} from "../api/client";
 
 const AuthContext = createContext(null);
+const SESSION_KEY = "hostel-attendance.mobile.session";
+const SERVER_ORIGIN_KEY = "hostel-attendance.mobile.server-origin";
 
-const demoUsers = {
-  student: {
-    id: "8f71928b-74d0-4dbb-b30a-1e5da85a20fd",
-    name: "Aarav Student",
-    role: "student"
-  },
-  warden: {
-    id: "54c1feaf-7bb9-4cc7-ac54-f1ed08dcb22c",
-    name: "Meera Warden",
-    role: "warden"
+async function readJson(key) {
+  const value = await SecureStore.getItemAsync(key);
+
+  if (!value) {
+    return null;
   }
-};
+
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    await SecureStore.deleteItemAsync(key);
+    return null;
+  }
+}
+
+async function writeJson(key, value) {
+  await SecureStore.setItemAsync(key, JSON.stringify(value));
+}
 
 export function AuthProvider({ children }) {
-  const [role, setRole] = useState("student");
+  const [session, setSession] = useState(null);
+  const [preferredServerOrigin, setPreferredServerOriginState] = useState(getDefaultServerOrigin());
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  const value = {
-    user: demoUsers[role],
-    toggleRole: () => {
-      setRole((currentRole) => (currentRole === "student" ? "warden" : "student"));
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrate() {
+      const [storedSession, storedOrigin] = await Promise.all([
+        readJson(SESSION_KEY),
+        SecureStore.getItemAsync(SERVER_ORIGIN_KEY)
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (storedSession?.user?.role === "student") {
+        setSession(storedSession);
+      }
+
+      setPreferredServerOriginState(
+        storedOrigin ? normalizeServerOrigin(storedOrigin) : getDefaultServerOrigin()
+      );
+      setIsHydrated(true);
     }
-  };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function setPreferredServerOrigin(value) {
+    const normalizedOrigin = normalizeServerOrigin(value);
+    setPreferredServerOriginState(normalizedOrigin);
+    await SecureStore.setItemAsync(SERVER_ORIGIN_KEY, normalizedOrigin);
+    return normalizedOrigin;
+  }
+
+  async function persistSession(nextSession) {
+    setSession(nextSession);
+
+    if (!nextSession) {
+      await SecureStore.deleteItemAsync(SESSION_KEY);
+      return;
+    }
+
+    await writeJson(SESSION_KEY, nextSession);
+  }
+
+  async function login({ serverOrigin, email, password }) {
+    const normalizedOrigin = await setPreferredServerOrigin(serverOrigin);
+    const response = await authRequest(normalizedOrigin, "/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email,
+        password
+      })
+    });
+
+    if (response.user?.role !== "student") {
+      throw new Error("This app is restricted to student accounts.");
+    }
+
+    const nextSession = {
+      serverOrigin: normalizedOrigin,
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      user: response.user
+    };
+
+    await persistSession(nextSession);
+    return nextSession;
+  }
+
+  async function refreshAccessToken(currentSession = session) {
+    if (!currentSession?.refreshToken) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+
+    const response = await authRequest(currentSession.serverOrigin, "/auth/refresh", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        refreshToken: currentSession.refreshToken
+      })
+    });
+
+    const nextSession = {
+      ...currentSession,
+      accessToken: response.accessToken
+    };
+
+    await persistSession(nextSession);
+    return nextSession;
+  }
+
+  async function logout() {
+    const currentSession = session;
+
+    try {
+      if (currentSession?.refreshToken) {
+        await authRequest(currentSession.serverOrigin, "/auth/logout", {
+          method: "POST",
+          headers: currentSession.accessToken
+            ? {
+                Authorization: `Bearer ${currentSession.accessToken}`,
+                "Content-Type": "application/json"
+              }
+            : {
+                "Content-Type": "application/json"
+              },
+          body: JSON.stringify({
+            refreshToken: currentSession.refreshToken
+          })
+        });
+      }
+    } catch (_error) {
+      // Local sign-out should still succeed even if the backend session is already gone.
+    } finally {
+      await persistSession(null);
+    }
+  }
+
+  async function authorizedRequest(path, options = {}) {
+    if (!session?.accessToken) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+
+    const headers = {
+      ...(options.headers || {}),
+      Authorization: `Bearer ${session.accessToken}`
+    };
+
+    try {
+      return await attendanceRequest(session.serverOrigin, path, {
+        ...options,
+        headers
+      });
+    } catch (error) {
+      if (error.status !== 401) {
+        throw error;
+      }
+
+      const refreshedSession = await refreshAccessToken(session).catch(async (refreshError) => {
+        await persistSession(null);
+        throw refreshError;
+      });
+
+      return attendanceRequest(refreshedSession.serverOrigin, path, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${refreshedSession.accessToken}`
+        }
+      });
+    }
+  }
+
+  return (
+    <AuthContext.Provider
+      value={{
+        isHydrated,
+        isAuthenticated: Boolean(session?.accessToken && session?.user),
+        session,
+        user: session?.user || null,
+        preferredServerOrigin,
+        setPreferredServerOrigin,
+        login,
+        logout,
+        authorizedRequest
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

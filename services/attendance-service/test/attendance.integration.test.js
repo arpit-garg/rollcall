@@ -188,6 +188,15 @@ test("warden can open and list windows from postgres", async () => {
 
   assert.equal(listResponse.status, 200);
   assert.equal(listResponse.json.data[0].id, windowId);
+
+  const currentWindowResponse = await jsonRequest(`${baseUrl}/api/v1/attendance/current-window`, {
+    headers: {
+      ...studentAuthHeader
+    }
+  });
+
+  assert.equal(currentWindowResponse.status, 200);
+  assert.equal(currentWindowResponse.json.data.id, windowId);
 });
 
 test("warden cannot open a window with closes_at before opens_at", async () => {

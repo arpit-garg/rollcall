@@ -11,6 +11,7 @@
 AGENTS.md
 node_modules/
 dist/
+.expo/
 .env
 __pycache__/
 *.pyc

@@ -3,6 +3,7 @@ import {
   closeWindow as closeWindowRecord,
   createWindow as createWindowRecord,
   getWindowRecords,
+  findActiveWindow,
   listWindows
 } from "../repositories/windowsRepository.js";
 import { httpError } from "./httpError.js";
@@ -40,6 +41,10 @@ export async function closeWindow({ windowId, hostelId, actorId }) {
 
 export async function listHostelWindows(hostelId) {
   return listWindows(hostelId);
+}
+
+export async function getCurrentWindowForHostel(hostelId) {
+  return findActiveWindow(hostelId);
 }
 
 export async function listRecordsForWindow(windowId, hostelId) {
