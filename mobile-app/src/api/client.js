@@ -22,12 +22,27 @@ export function normalizeServerOrigin(value) {
     return getDefaultServerOrigin();
   }
 
-  return ensureProtocol(trimmed).replace(/\/$/, "");
+  // Strip any trailing port number so buildUrl can always append :8080 cleanly.
+  // e.g. "http://192.168.1.65:8080" → "http://192.168.1.65"
+  return ensureProtocol(trimmed)
+    .replace(/\/$/, "")
+    .replace(/:\d+$/, "");
 }
 
-function buildUrl(origin, port, path) {
+function buildUrl(origin, path) {
   const base = normalizeServerOrigin(origin);
-  return `${base}:${port}/api/v1${path.startsWith("/") ? path : `/${path}`}`;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  // Don't append :8080 for public tunnel URLs (https:// with a hostname, not an IP).
+  // For local IPs or localhost, always use port 8080.
+  const isLocalOrigin =
+    base.includes("localhost") ||
+    base.includes("10.0.2.2") ||
+    /https?:\/\/\d+\.\d+\.\d+\.\d+/.test(base);
+  const url = isLocalOrigin
+    ? `${base}:8080/api/v1${cleanPath}`
+    : `${base}/api/v1${cleanPath}`;
+  console.log("[API] \u2192", url);
+  return url;
 }
 
 async function parseBody(response) {
@@ -50,8 +65,14 @@ async function parseBody(response) {
   }
 }
 
-async function request(origin, port, path, options = {}) {
-  const response = await fetch(buildUrl(origin, port, path), options);
+async function request(origin, path, options = {}) {
+  const response = await fetch(buildUrl(origin, path), {
+    ...options,
+    headers: {
+      "bypass-tunnel-reminder": "true",
+      ...(options.headers || {})
+    }
+  });
   const body = await parseBody(response);
 
   if (!response.ok) {
@@ -67,9 +88,9 @@ async function request(origin, port, path, options = {}) {
 }
 
 export function authRequest(origin, path, options = {}) {
-  return request(origin, 3001, path, options);
+  return request(origin, path, options);
 }
 
 export function attendanceRequest(origin, path, options = {}) {
-  return request(origin, 3002, path, options);
+  return request(origin, path, options);
 }

@@ -12,7 +12,7 @@
       "package": "com.college.hostelattendance"
     },
     "extra": {
-      "defaultServerOrigin": "http://10.0.2.2"
+      "defaultServerOrigin": "http://192.168.1.65"
     },
     "plugins": [
       [
