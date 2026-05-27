@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { getRedisClient } from "../config/redis.js";
 import { requestAttendanceVerification } from "./mlClient.js";
 import { resolveAttendanceRecord } from "./attendanceService.js";
+import { emitAttendanceResolved } from "./socketEmitter.js";
 
 const metrics = {
   workerActive: false,
@@ -44,6 +45,7 @@ async function workerLoop() {
     try {
       const outcome = await processVerificationJob(job);
       await resolveAttendanceRecord(job.jobId, outcome);
+      emitAttendanceResolved({ jobId: job.jobId, studentId: job.studentId, ...outcome });
       metrics.processedJobs += 1;
       metrics.lastProcessedJobId = job.jobId;
       metrics.lastProcessedAt = new Date().toISOString();
@@ -56,6 +58,7 @@ async function workerLoop() {
         faceScore: null,
         livenessScore: null
       });
+      emitAttendanceResolved({ jobId: job.jobId, studentId: job.studentId, status: "failed", faceScore: null, livenessScore: null });
     }
   }
 

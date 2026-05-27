@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { Router } from "express";
-import { findUserByEmail, findUserById } from "../repositories/usersRepository.js";
+import { findUserByEmail, findUserById, createUser } from "../repositories/usersRepository.js";
+import { pool } from "../config/db.js";
 import {
   getRefreshSession,
   persistRefreshSession,
@@ -178,4 +179,81 @@ router.post("/logout", async (req, res, next) => {
   }
 });
 
+router.post("/signup", async (req, res, next) => {
+  try {
+    const { name, email, password, hostelId, roomNumber } = req.body ?? {};
+
+    if (!name || !email || !password || !hostelId) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Name, email, password, and hostel block are required",
+          retryable: false
+        }
+      });
+    }
+
+    const existingUser = await findUserByEmail(email);
+
+    if (existingUser) {
+      return res.status(409).json({
+        error: {
+          code: "EMAIL_CONFLICT",
+          message: "An account with this email address already exists",
+          retryable: false
+        }
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await createUser({
+      name,
+      email,
+      passwordHash,
+      hostelId,
+      roomNumber
+    });
+
+    const accessToken = createAccessToken(user);
+    const refreshToken = createRefreshToken(user);
+
+    await persistRefreshSession(
+      refreshToken,
+      {
+        userId: user.id,
+        role: user.role,
+        hostelId: user.hostelId
+      },
+      getRefreshTokenTtlMs()
+    );
+
+    return res
+      .cookie("refreshToken", refreshToken, authCookieOptions())
+      .status(201)
+      .json({
+        accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          role: user.role,
+          name: user.name,
+          hostelId: user.hostelId,
+          roomNumber: user.roomNumber
+        }
+      });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/hostels", async (req, res, next) => {
+  try {
+    const { rows } = await pool.query("SELECT id, name FROM hostels ORDER BY name ASC");
+    return res.status(200).json({ data: rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 export { router as authRoutes };
+

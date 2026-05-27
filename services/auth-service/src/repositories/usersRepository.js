@@ -44,3 +44,17 @@ export async function findUserById(id) {
 
   return mapUser(rows[0]);
 }
+
+export async function createUser({ name, email, passwordHash, hostelId, roomNumber }) {
+  const { rows } = await pool.query(
+    `
+      INSERT INTO users (name, email, password_hash, role, hostel_id, room_number, is_active)
+      VALUES ($1, $2, $3, 'student', $4, $5, true)
+      RETURNING id, name, email, role, hostel_id, room_number, is_active
+    `,
+    [name.trim(), email.trim().toLowerCase(), passwordHash, hostelId, roomNumber ? roomNumber.trim() : null]
+  );
+
+  return mapUser(rows[0]);
+}
+

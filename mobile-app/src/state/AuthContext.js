@@ -83,8 +83,9 @@ export function AuthProvider({ children }) {
     await writeJson(SESSION_KEY, nextSession);
   }
 
-  async function login({ serverOrigin, email, password }) {
-    const normalizedOrigin = await setPreferredServerOrigin(serverOrigin);
+  async function login({ email, password }) {
+    const origin = getDefaultServerOrigin();
+    const normalizedOrigin = await setPreferredServerOrigin(origin);
     const response = await authRequest(normalizedOrigin, "/auth/login", {
       method: "POST",
       headers: {
@@ -109,6 +110,47 @@ export function AuthProvider({ children }) {
 
     await persistSession(nextSession);
     return nextSession;
+  }
+
+  async function signup({ name, email, password, hostelId, roomNumber }) {
+    const origin = getDefaultServerOrigin();
+    const normalizedOrigin = await setPreferredServerOrigin(origin);
+    const response = await authRequest(normalizedOrigin, "/auth/signup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        hostelId,
+        roomNumber
+      })
+    });
+
+    if (response.user?.role !== "student") {
+      throw new Error("This app is restricted to student accounts.");
+    }
+
+    const nextSession = {
+      serverOrigin: normalizedOrigin,
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      user: response.user
+    };
+
+    await persistSession(nextSession);
+    return nextSession;
+  }
+
+  async function getHostels() {
+    const origin = getDefaultServerOrigin();
+    const normalizedOrigin = normalizeServerOrigin(origin);
+    const response = await authRequest(normalizedOrigin, "/auth/hostels", {
+      method: "GET"
+    });
+    return response.data || [];
   }
 
   async function refreshAccessToken(currentSession = session) {
@@ -207,6 +249,8 @@ export function AuthProvider({ children }) {
         preferredServerOrigin,
         setPreferredServerOrigin,
         login,
+        signup,
+        getHostels,
         logout,
         authorizedRequest
       }}

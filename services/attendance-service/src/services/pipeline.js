@@ -6,6 +6,7 @@ import {
   requestEnrollmentProcessing
 } from "./mlClient.js";
 import { removeObject } from "./objectStorage.js";
+import { emitEnrollmentUpdated } from "./socketEmitter.js";
 
 export async function runEnrollmentPipeline({ studentId, imageObjectKey }) {
   try {
@@ -15,8 +16,11 @@ export async function runEnrollmentPipeline({ studentId, imageObjectKey }) {
       result.modelVersion || "facenet-v1",
       result.embeddingRef
     );
+    emitEnrollmentUpdated(studentId, "enrolled");
   } catch (_error) {
     await removeObject(imageObjectKey);
     await markReEnrollmentRequired(studentId);
+    emitEnrollmentUpdated(studentId, "re_enrollment_required");
   }
 }
+

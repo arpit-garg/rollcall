@@ -8,6 +8,7 @@ import {
   formatDateTime,
   formatWindowLabel
 } from "../utils/format.js";
+import { useSocket } from "../hooks/useSocket.js";
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
@@ -16,6 +17,32 @@ export default function DashboardPage() {
   const [windowForm, setWindowForm] = useState(createDefaultWindowFormValues);
   const [overrideRecord, setOverrideRecord] = useState(null);
   const [overrideReason, setOverrideReason] = useState("");
+
+  const { socket, isConnected } = useSocket();
+
+  const healthQuery = useQuery({
+    queryKey: ["queue-health"],
+    queryFn: async () => {
+      const response = await fetch(
+        (import.meta.env.VITE_ATTENDANCE_API_BASE_URL || "http://localhost:3002").replace(/\/api\/v1$/, "") + "/health"
+      );
+      if (!response.ok) throw new Error("Health check failed");
+      return response.json();
+    },
+    refetchInterval: 10000
+  });
+
+  useEffect(() => {
+    if (!socket) return;
+
+    function handleResolved() {
+      queryClient.invalidateQueries({ queryKey: ["window-records"] });
+      queryClient.invalidateQueries({ queryKey: ["queue-health"] });
+    }
+
+    socket.on("attendance:resolved", handleResolved);
+    return () => socket.off("attendance:resolved", handleResolved);
+  }, [socket, queryClient]);
 
   const windowsQuery = useQuery({
     queryKey: ["windows"],
@@ -165,6 +192,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Hostel Attendance Dashboard</h1>
+        <div className="flex items-center gap-2 text-sm text-steel">
+          <span className={`inline-block h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-400"}`} />
+          {isConnected ? "Live updates active" : "Reconnecting..."}
+        </div>
+      </div>
+
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Selected Window"
@@ -328,6 +363,44 @@ export default function DashboardPage() {
                   Windows poll every 5s and records poll every 3s while selected.
                 </p>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-[1.75rem] bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <p className="text-sm uppercase tracking-[0.2em] text-steel">Queue Health</p>
+            <h3 className="mt-2 text-lg font-semibold text-ink">Verification worker status</h3>
+
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
+                <span className="text-sm text-steel">Worker</span>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                  healthQuery.data?.queue?.workerActive
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-rose-100 text-rose-800'
+                }`}>
+                  <span className={`inline-block h-1.5 w-1.5 rounded-full ${
+                    healthQuery.data?.queue?.workerActive ? 'bg-emerald-500' : 'bg-rose-500'
+                  }`} />
+                  {healthQuery.data?.queue?.workerActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
+                <span className="text-sm text-steel">Pending</span>
+                <span className="font-semibold text-ink">{healthQuery.data?.queue?.pendingJobs ?? '—'}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
+                <span className="text-sm text-steel">Processed</span>
+                <span className="font-semibold text-ink">{healthQuery.data?.queue?.processedJobs ?? '—'}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
+                <span className="text-sm text-steel">Failed</span>
+                <span className="font-semibold text-ink">{healthQuery.data?.queue?.failedJobs ?? '—'}</span>
+              </div>
+              {healthQuery.data?.queue?.lastProcessedAt ? (
+                <p className="text-xs text-steel">
+                  Last processed: {formatDateTime(healthQuery.data.queue.lastProcessedAt)}
+                </p>
+              ) : null}
             </div>
           </section>
         </aside>

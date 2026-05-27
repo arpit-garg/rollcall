@@ -47,6 +47,7 @@ before(async () => {
 
 beforeEach(async () => {
   await redis.flushDb();
+  await pool.query("DELETE FROM users WHERE email = 'test_signup@college.edu'");
 });
 
 after(async () => {
@@ -173,3 +174,57 @@ test("logout revokes the refresh session", async () => {
   const refreshBody = await refreshResponse.json();
   assert.equal(refreshBody.error.code, "UNAUTHORIZED");
 });
+
+test("hostels endpoint returns list of seeded hostels", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/auth/hostels`);
+  assert.equal(response.status, 200);
+
+  const body = await response.json();
+  assert.ok(body.data.length >= 1);
+  assert.ok(body.data.some((hostel) => hostel.name === "Main Boys Hostel"));
+});
+
+test("signup successfully registers a new student user and returns access token", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Signup",
+      email: "test_signup@college.edu",
+      password: "TestPassword123",
+      hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4",
+      roomNumber: "C-305"
+    })
+  });
+
+  assert.equal(response.status, 201);
+
+  const body = await response.json();
+  assert.ok(body.accessToken);
+  assert.ok(body.refreshToken);
+  assert.equal(body.user.name, "Test Signup");
+  assert.equal(body.user.role, "student");
+  assert.equal(body.user.hostelId, "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4");
+  assert.equal(body.user.roomNumber, "C-305");
+
+  // Verify duplication check fails with 409 Conflict
+  const duplicateResponse = await fetch(`${baseUrl}/api/v1/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Signup",
+      email: "test_signup@college.edu",
+      password: "TestPassword123",
+      hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4"
+    })
+  });
+
+  assert.equal(duplicateResponse.status, 409);
+  const dupBody = await duplicateResponse.json();
+  assert.equal(dupBody.error.code, "EMAIL_CONFLICT");
+});
+

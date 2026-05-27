@@ -1,18 +1,49 @@
 import { StyleSheet, Text, View } from "react-native";
 
 const toneStyles = {
-  dark: { backgroundColor: "#12384b", textColor: "#f7fbfc", labelColor: "#8ed1c4" },
-  success: { backgroundColor: "#1f7a5c", textColor: "#f7fbfc", labelColor: "#d7f9ef" },
-  accent: { backgroundColor: "#ef8354", textColor: "#081f29", labelColor: "#4f2b1d" },
-  danger: { backgroundColor: "#b42318", textColor: "#fef3f2", labelColor: "#fecaca" },
-  light: { backgroundColor: "#f7fbfc", textColor: "#0f2d3c", labelColor: "#5c677d" }
+  dark: { 
+    backgroundColor: "rgba(255, 255, 255, 0.03)", 
+    textColor: "#f8fafc", 
+    labelColor: "#94a3b8",
+    borderColor: "rgba(255, 255, 255, 0.08)" 
+  },
+  success: { 
+    backgroundColor: "rgba(16, 185, 129, 0.08)", 
+    textColor: "#34d399", 
+    labelColor: "#6ee7b7",
+    borderColor: "rgba(16, 185, 129, 0.2)" 
+  },
+  accent: { 
+    backgroundColor: "rgba(6, 182, 212, 0.08)", 
+    textColor: "#22d3ee", 
+    labelColor: "#67e8f9",
+    borderColor: "rgba(6, 182, 212, 0.2)" 
+  },
+  danger: { 
+    backgroundColor: "rgba(239, 68, 68, 0.08)", 
+    textColor: "#f87171", 
+    labelColor: "#fca5a5",
+    borderColor: "rgba(239, 68, 68, 0.2)" 
+  },
+  light: { 
+    backgroundColor: "rgba(255, 255, 255, 0.015)", 
+    textColor: "#cbd5e1", 
+    labelColor: "#64748b",
+    borderColor: "rgba(255, 255, 255, 0.04)" 
+  }
 };
 
 export default function StatusCard({ label, value, tone }) {
   const palette = toneStyles[tone] ?? toneStyles.light;
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.backgroundColor }]}>
+    <View style={[
+      styles.card, 
+      { 
+        backgroundColor: palette.backgroundColor,
+        borderColor: palette.borderColor
+      }
+    ]}>
       <Text style={[styles.label, { color: palette.labelColor }]}>{label}</Text>
       <Text style={[styles.value, { color: palette.textColor }]}>{value}</Text>
     </View>
@@ -21,17 +52,24 @@ export default function StatusCard({ label, value, tone }) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 24,
-    padding: 18,
-    gap: 6
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    gap: 4
   },
   label: {
-    fontSize: 12,
-    letterSpacing: 1.4,
-    textTransform: "uppercase"
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    fontFamily: "System"
   },
   value: {
-    fontSize: 18,
-    fontWeight: "700"
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    fontFamily: "System"
   }
 });
+
