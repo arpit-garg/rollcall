@@ -62,7 +62,7 @@ export async function invalidateTemplate(studentId) {
   await pool.query(
     `
       UPDATE face_templates
-      SET is_valid = false
+      SET is_valid = false, model_version = 'failed'
       WHERE student_id = $1
     `,
     [studentId]

@@ -1,5 +1,7 @@
 import { Platform } from "react-native";
+import appConfig from "../../app.json";
 
+const CONFIG_SERVER_ORIGIN = appConfig?.expo?.extra?.defaultServerOrigin;
 const DEFAULT_ANDROID_ORIGIN = "http://10.0.2.2";
 const DEFAULT_LOCAL_ORIGIN = "http://localhost";
 
@@ -12,6 +14,35 @@ function ensureProtocol(value) {
 }
 
 export function getDefaultServerOrigin() {
+  if (CONFIG_SERVER_ORIGIN) {
+    if (Platform.OS === "android") {
+      const constants = Platform.constants || {};
+      const brand = (constants.Brand || "").toLowerCase();
+      const model = (constants.Model || "").toLowerCase();
+      const fingerprint = (constants.Fingerprint || "").toLowerCase();
+      
+      const isEmulator = 
+        brand.startsWith("generic") ||
+        brand.startsWith("unknown") ||
+        fingerprint.startsWith("generic") ||
+        fingerprint.startsWith("unknown") ||
+        model.includes("google_sdk") ||
+        model.includes("emulator") ||
+        model.includes("android sdk built for x86") ||
+        model.includes("sdk_gphone");
+        
+      const isLocalConfigOrigin =
+        CONFIG_SERVER_ORIGIN.includes("localhost") ||
+        CONFIG_SERVER_ORIGIN.includes("127.0.0.1") ||
+        /https?:\/\/\d+\.\d+\.\d+\.\d+/.test(CONFIG_SERVER_ORIGIN);
+        
+      if (isEmulator && isLocalConfigOrigin) {
+        console.log("[API] Android Emulator detected. Automatically routing to loopback IP:", DEFAULT_ANDROID_ORIGIN);
+        return DEFAULT_ANDROID_ORIGIN;
+      }
+    }
+    return CONFIG_SERVER_ORIGIN;
+  }
   return Platform.OS === "android" ? DEFAULT_ANDROID_ORIGIN : DEFAULT_LOCAL_ORIGIN;
 }
 

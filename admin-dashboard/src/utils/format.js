@@ -13,6 +13,18 @@ export function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+export function localDateTimeToISO(datetimeLocalValue) {
+  if (!datetimeLocalValue) {
+    return null;
+  }
+
+  const [datePart, timePart] = datetimeLocalValue.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+  const date = new Date(year, month - 1, day, hours, minutes);
+  return date.toISOString();
+}
+
 export function formatScore(value) {
   if (value === null || value === undefined) {
     return "--";

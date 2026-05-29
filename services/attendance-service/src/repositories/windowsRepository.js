@@ -33,7 +33,9 @@ export async function createWindow({ hostelId, openedBy, opensAt, closesAt }) {
 export async function listWindows(hostelId) {
   const { rows } = await pool.query(
     `
-      SELECT id, hostel_id, opened_by, date, opens_at, closes_at, is_open, created_at
+      SELECT id, hostel_id, opened_by, date, opens_at, closes_at,
+             (is_open AND closes_at >= now()) AS is_open,
+             created_at
       FROM attendance_windows
       WHERE hostel_id = $1
       ORDER BY created_at DESC

@@ -39,22 +39,24 @@ export function AuthProvider({ children }) {
     let cancelled = false;
 
     async function hydrate() {
-      const [storedSession, storedOrigin] = await Promise.all([
-        readJson(SESSION_KEY),
-        SecureStore.getItemAsync(SERVER_ORIGIN_KEY)
+      const [storedSession] = await Promise.all([
+        readJson(SESSION_KEY)
       ]);
 
       if (cancelled) {
         return;
       }
 
+      const activeOrigin = getDefaultServerOrigin();
+      const normalizedActiveOrigin = normalizeServerOrigin(activeOrigin);
+
       if (storedSession?.user?.role === "student") {
+        // Force the stored session to use the active configured origin
+        storedSession.serverOrigin = normalizedActiveOrigin;
         setSession(storedSession);
       }
 
-      setPreferredServerOriginState(
-        storedOrigin ? normalizeServerOrigin(storedOrigin) : getDefaultServerOrigin()
-      );
+      setPreferredServerOriginState(normalizedActiveOrigin);
       setIsHydrated(true);
     }
 

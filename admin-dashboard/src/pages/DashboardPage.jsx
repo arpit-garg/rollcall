@@ -6,7 +6,8 @@ import { useAuth } from "../context/AuthContext.jsx";
 import {
   createDefaultWindowFormValues,
   formatDateTime,
-  formatWindowLabel
+  formatWindowLabel,
+  localDateTimeToISO
 } from "../utils/format.js";
 import { useSocket } from "../hooks/useSocket.js";
 
@@ -93,8 +94,8 @@ export default function DashboardPage() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          opens_at: new Date(windowForm.opensAt).toISOString(),
-          closes_at: new Date(windowForm.closesAt).toISOString()
+          opens_at: localDateTimeToISO(windowForm.opensAt),
+          closes_at: localDateTimeToISO(windowForm.closesAt)
         })
       }),
     onSuccess: async () => {

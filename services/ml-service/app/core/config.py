@@ -11,6 +11,8 @@ class Settings(BaseModel):
     minio_access_key: str = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
     minio_secret_key: str = os.getenv("MINIO_SECRET_KEY", "minioadmin")
     minio_bucket: str = os.getenv("MINIO_BUCKET", "face-templates")
+    fasnet_v2_weights: str = os.getenv("FASNET_V2_WEIGHTS", "/app/weights/MiniFASNetV2.pth")
+    fasnet_v1se_weights: str = os.getenv("FASNET_V1SE_WEIGHTS", "/app/weights/MiniFASNetV1SE.pth")
 
 
 settings = Settings()
