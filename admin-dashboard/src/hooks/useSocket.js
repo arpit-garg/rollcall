@@ -3,12 +3,22 @@ import { io } from "socket.io-client";
 
 const SOCKET_URL = import.meta.env.VITE_ATTENDANCE_WS_URL || "http://localhost:3002";
 
-export function useSocket() {
+export function useSocket(session) {
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    if (!session?.accessToken || !session?.user?.hostelId) {
+      setSocket(null);
+      setIsConnected(false);
+      return undefined;
+    }
+
     const instance = io(SOCKET_URL, {
+      auth: {
+        token: session.accessToken,
+        hostelId: session.user.hostelId
+      },
       transports: ["websocket", "polling"],
       withCredentials: true
     });
@@ -21,7 +31,7 @@ export function useSocket() {
     return () => {
       instance.disconnect();
     };
-  }, []);
+  }, [session?.accessToken, session?.user?.hostelId]);
 
   return { socket, isConnected };
 }

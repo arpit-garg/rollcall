@@ -18,16 +18,40 @@ function mapWindow(row) {
 }
 
 export async function createWindow({ hostelId, openedBy, opensAt, closesAt }) {
-  const { rows } = await pool.query(
-    `
-      INSERT INTO attendance_windows (hostel_id, opened_by, date, opens_at, closes_at, is_open)
-      VALUES ($1, $2, $3::date, $3::timestamptz, $4::timestamptz, true)
-      RETURNING id, hostel_id, opened_by, date, opens_at, closes_at, is_open, created_at
-    `,
-    [hostelId, openedBy, opensAt, closesAt]
-  );
+  const client = await pool.connect();
 
-  return mapWindow(rows[0]);
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [hostelId]);
+
+    const overlapping = await findOverlappingWindowForClient(client, hostelId, opensAt, closesAt);
+
+    if (overlapping) {
+      await client.query("ROLLBACK");
+      return {
+        overlapping
+      };
+    }
+
+    const { rows } = await client.query(
+      `
+        INSERT INTO attendance_windows (hostel_id, opened_by, date, opens_at, closes_at, is_open)
+        VALUES ($1, $2, $3::date, $3::timestamptz, $4::timestamptz, true)
+        RETURNING id, hostel_id, opened_by, date, opens_at, closes_at, is_open, created_at
+      `,
+      [hostelId, openedBy, opensAt, closesAt]
+    );
+
+    await client.query("COMMIT");
+    return {
+      window: mapWindow(rows[0])
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function listWindows(hostelId) {
@@ -125,7 +149,11 @@ export async function getWindowRecords(windowId, hostelId) {
 }
 
 export async function findOverlappingWindow(hostelId, opensAt, closesAt) {
-  const { rows } = await pool.query(
+  return findOverlappingWindowForClient(pool, hostelId, opensAt, closesAt);
+}
+
+async function findOverlappingWindowForClient(client, hostelId, opensAt, closesAt) {
+  const { rows } = await client.query(
     `
       SELECT id, opens_at, closes_at
       FROM attendance_windows

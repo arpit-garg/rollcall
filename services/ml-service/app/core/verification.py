@@ -25,6 +25,21 @@ _resnet = InceptionResnetV1(pretrained="vggface2").eval().to(_device)
 logger.info("FaceNet-512 model loaded (device=%s)", _device)
 
 
+def validate_embedding(embedding: np.ndarray | None) -> np.ndarray | None:
+    """Return a finite 512-dimensional embedding array, or None if invalid."""
+    if embedding is None:
+        return None
+    try:
+        array = np.asarray(embedding, dtype=np.float32)
+    except (TypeError, ValueError):
+        return None
+    if array.shape != (512,) or not np.all(np.isfinite(array)):
+        return None
+    if np.linalg.norm(array) <= 0:
+        return None
+    return array
+
+
 def compute_embedding(face_tensor: torch.Tensor) -> np.ndarray:
     """Compute a 512-dim L2-normalized embedding from an MTCNN-aligned face tensor.
 
@@ -42,7 +57,10 @@ def compute_embedding(face_tensor: torch.Tensor) -> np.ndarray:
     vec = emb.squeeze().cpu().numpy()
     # L2 normalize
     vec = vec / (np.linalg.norm(vec) + 1e-10)
-    return vec.astype(np.float32)
+    valid_embedding = validate_embedding(vec)
+    if valid_embedding is None:
+        raise ValueError("FaceNet produced an invalid embedding")
+    return valid_embedding
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -57,7 +75,12 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
         (Technically cosine similarity is [-1, 1] but for L2-normalized
         face embeddings it's practically always [0, 1].)
     """
-    sim = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10))
+    valid_a = validate_embedding(a)
+    valid_b = validate_embedding(b)
+    if valid_a is None or valid_b is None:
+        raise ValueError("cosine_similarity requires finite 512-dimensional embeddings")
+
+    sim = float(np.dot(valid_a, valid_b) / (np.linalg.norm(valid_a) * np.linalg.norm(valid_b) + 1e-10))
     # Clamp to [0, 1] for safety
     return max(0.0, min(1.0, sim))
 

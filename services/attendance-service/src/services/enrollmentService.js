@@ -1,44 +1,69 @@
+import { randomUUID } from "node:crypto";
 import {
+  failEnrollmentAttempt as failEnrollmentAttemptRecord,
   findFaceTemplate,
   getEnrollmentStatus as getStatusFromDb,
   invalidateTemplate,
   setEnrollmentProcessing,
   upsertEnrolledTemplate
 } from "../repositories/faceTemplatesRepository.js";
+import { findUserById } from "../repositories/usersRepository.js";
 import { removeObject } from "./objectStorage.js";
+import { httpError } from "./httpError.js";
+
+async function removeObjectBestEffort(objectKey) {
+  try {
+    await removeObject(objectKey);
+  } catch (error) {
+    console.warn(`[Enrollment] Failed to remove object ${objectKey}: ${error.message}`);
+  }
+}
 
 export async function getEnrollmentStatus(studentId) {
   return getStatusFromDb(studentId);
 }
 
 export async function startEnrollment(studentId) {
-  const existingTemplate = await findFaceTemplate(studentId);
-
-  if (existingTemplate?.embedding_ref?.startsWith("templates/")) {
-    await removeObject(existingTemplate.embedding_ref);
-  }
-
-  await setEnrollmentProcessing(studentId);
+  const attemptId = randomUUID();
+  await setEnrollmentProcessing(studentId, attemptId);
+  return attemptId;
 }
 
-export async function completeEnrollment(studentId, modelVersion, embeddingRef) {
+export async function completeEnrollment(studentId, modelVersion, embeddingRef, attemptId = null) {
   const existingTemplate = await findFaceTemplate(studentId);
+  const updated = await upsertEnrolledTemplate(studentId, modelVersion, embeddingRef, attemptId);
+
+  if (!updated) {
+    return false;
+  }
 
   if (
     existingTemplate?.embedding_ref?.startsWith("templates/") &&
     existingTemplate.embedding_ref !== embeddingRef
   ) {
-    await removeObject(existingTemplate.embedding_ref);
+    await removeObjectBestEffort(existingTemplate.embedding_ref);
   }
 
-  await upsertEnrolledTemplate(studentId, modelVersion, embeddingRef);
+  return true;
 }
 
-export async function markReEnrollmentRequired(studentId) {
+export async function failEnrollmentAttempt(studentId, attemptId) {
+  await failEnrollmentAttemptRecord(studentId, attemptId);
+}
+
+export async function markReEnrollmentRequired(studentId, hostelId = null) {
+  if (hostelId) {
+    const student = await findUserById(studentId);
+
+    if (!student || student.role !== "student" || student.hostelId !== hostelId) {
+      throw httpError(404, "NOT_FOUND", "Student not found");
+    }
+  }
+
   const existingTemplate = await findFaceTemplate(studentId);
 
   if (existingTemplate?.embedding_ref?.startsWith("templates/")) {
-    await removeObject(existingTemplate.embedding_ref);
+    await removeObjectBestEffort(existingTemplate.embedding_ref);
   }
 
   await invalidateTemplate(studentId);

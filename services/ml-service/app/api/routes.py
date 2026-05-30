@@ -12,14 +12,15 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.config import settings
 from app.core.face_detection import detect_face
-from app.core.liveness import check_liveness
+from app.core.liveness import check_liveness, is_liveness_ready
 from app.core.storage import (
+    is_storage_ready,
     load_embedding,
     read_object_bytes,
     remove_object_if_exists,
     save_embedding,
 )
-from app.core.verification import cosine_similarity, image_to_embedding
+from app.core.verification import cosine_similarity, image_to_embedding, validate_embedding
 from app.schemas.ml import (
     EnrollmentRequest,
     EnrollmentResponse,
@@ -32,15 +33,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _demo_bypass_enabled() -> bool:
+    return bool(getattr(settings, "is_demo_bypass_enabled", False))
+
+
+def _cleanup_uploaded_image(object_key: str) -> None:
+    try:
+        remove_object_if_exists(object_key)
+    except Exception as error:
+        logger.warning("Failed to clean up temporary image %s: %s", object_key, error)
+
+
+def _invalid_image_error(error: Exception) -> HTTPException:
+    logger.warning("Invalid image data: %s", error)
+    return HTTPException(status_code=422, detail="Invalid image data")
+
+
+def is_service_ready() -> tuple[bool, dict]:
+    checks = {
+        "object_storage": is_storage_ready(),
+        "anti_spoofing": is_liveness_ready(),
+        "face_recognition": True,
+    }
+    return all(checks.values()), checks
+
+
 @router.get("/health")
 def health() -> dict:
+    ready, checks = is_service_ready()
     return {
-        "status": "ok",
+        "status": "ok" if ready else "not_ready",
+        "ready": ready,
         "service": settings.service_name,
         "models": {
             "face_recognition": "FaceNet-512 (vggface2)",
             "anti_spoofing": "MiniFASNetV2 + MiniFASNetV1SE",
         },
+        "checks": checks,
         "thresholds": {
             "faceSimilarity": settings.similarity_threshold,
             "liveness": settings.liveness_threshold,
@@ -66,7 +95,7 @@ def enroll(payload: EnrollmentRequest) -> EnrollmentResponse:
 
     try:
         # Check for demo/test dummy image
-        if len(image_bytes) < 1000:
+        if _demo_bypass_enabled() and len(image_bytes) < 1000:
             logger.info("Demo/test image detected in enrollment. Bypassing ML pipeline.")
             import numpy as np
             rng = np.random.RandomState(hash(payload.studentId) % (2**31))
@@ -81,7 +110,10 @@ def enroll(payload: EnrollmentRequest) -> EnrollmentResponse:
             )
 
         # 2. Detect face
-        detection = detect_face(image_bytes)
+        try:
+            detection = detect_face(image_bytes)
+        except ValueError as error:
+            raise _invalid_image_error(error)
         if detection is None:
             logger.warning("No face detected for enrollment: student_id=%s", payload.studentId)
             return EnrollmentResponse(
@@ -106,7 +138,11 @@ def enroll(payload: EnrollmentRequest) -> EnrollmentResponse:
             )
 
         # 4. Compute FaceNet-512 embedding
-        embedding = image_to_embedding(image_bytes)
+        try:
+            embedding = image_to_embedding(image_bytes)
+        except ValueError as error:
+            raise _invalid_image_error(error)
+        embedding = validate_embedding(embedding)
         if embedding is None:
             logger.warning("Could not compute embedding for enrollment: student_id=%s", payload.studentId)
             return EnrollmentResponse(
@@ -126,7 +162,7 @@ def enroll(payload: EnrollmentRequest) -> EnrollmentResponse:
         )
     finally:
         # 6. Clean up uploaded image from MinIO
-        remove_object_if_exists(payload.imageObjectKey)
+        _cleanup_uploaded_image(payload.imageObjectKey)
 
 
 @router.post("/api/v1/internal/verify", response_model=VerificationResponse)
@@ -150,8 +186,8 @@ def verify(request: VerificationRequest) -> VerificationResponse:
 
     try:
         # Check for demo/test dummy image or seed template
-        if len(image_bytes) < 1000 or (request.templateRef and request.templateRef.startswith("seed://")):
-            logger.info("Demo/test image or seed template detected in verification. Bypassing ML pipeline.")
+        if _demo_bypass_enabled() and len(image_bytes) < 1000:
+            logger.info("Demo/test image detected in verification. Bypassing ML pipeline.")
             return VerificationResponse(
                 status="verified",
                 faceScore=0.99,
@@ -159,7 +195,10 @@ def verify(request: VerificationRequest) -> VerificationResponse:
             )
 
         # 2. Detect face
-        detection = detect_face(image_bytes)
+        try:
+            detection = detect_face(image_bytes)
+        except ValueError as error:
+            raise _invalid_image_error(error)
         if detection is None:
             logger.warning("No face detected for verification: student_id=%s", request.studentId)
             return VerificationResponse(
@@ -175,7 +214,11 @@ def verify(request: VerificationRequest) -> VerificationResponse:
         logger.info("Liveness score: %.4f (threshold: %.4f)", liveness_score, request.livenessThreshold)
 
         # 4. Compute FaceNet-512 embedding from the selfie
-        candidate_embedding = image_to_embedding(image_bytes)
+        try:
+            candidate_embedding = image_to_embedding(image_bytes)
+        except ValueError as error:
+            raise _invalid_image_error(error)
+        candidate_embedding = validate_embedding(candidate_embedding)
         if candidate_embedding is None:
             logger.warning("Could not compute embedding for verification: student_id=%s", request.studentId)
             return VerificationResponse(
@@ -185,7 +228,7 @@ def verify(request: VerificationRequest) -> VerificationResponse:
             )
 
         # 5. Load enrolled embedding
-        enrolled_embedding = load_embedding(request.templateRef)
+        enrolled_embedding = validate_embedding(load_embedding(request.templateRef))
         if enrolled_embedding is None:
             logger.warning("No enrolled embedding found: template_ref=%s", request.templateRef)
             return VerificationResponse(
@@ -215,4 +258,4 @@ def verify(request: VerificationRequest) -> VerificationResponse:
         )
     finally:
         # 8. Clean up uploaded image from MinIO
-        remove_object_if_exists(request.imageObjectKey)
+        _cleanup_uploaded_image(request.imageObjectKey)

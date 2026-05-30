@@ -37,7 +37,7 @@ router.post("/face", upload.single("image"), async (req, res, next) => {
   }
 
   try {
-    await startEnrollment(req.user.id);
+    const attemptId = await startEnrollment(req.user.id);
     const imageObjectKey = await uploadTempObject({
       category: "enrollment",
       studentId: req.user.id,
@@ -48,7 +48,8 @@ router.post("/face", upload.single("image"), async (req, res, next) => {
 
     void runEnrollmentPipeline({
       studentId: req.user.id,
-      imageObjectKey
+      imageObjectKey,
+      attemptId
     }).catch((error) => {
       console.error(`[Enrollment Pipeline] Fatal background pipeline error: ${error.message}`);
     });
@@ -104,7 +105,7 @@ router.delete("/face", async (req, res, next) => {
   }
 
   try {
-    await markReEnrollmentRequired(studentId);
+    await markReEnrollmentRequired(studentId, req.user.hostelId);
     return res.status(200).json({
       status: "invalidated",
       studentId

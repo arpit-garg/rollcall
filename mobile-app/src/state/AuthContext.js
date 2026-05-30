@@ -26,8 +26,34 @@ async function readJson(key) {
   }
 }
 
+async function readString(key) {
+  const value = await SecureStore.getItemAsync(key);
+  return value || null;
+}
+
 async function writeJson(key, value) {
   await SecureStore.setItemAsync(key, JSON.stringify(value));
+}
+
+async function revokeAuthSession(origin, authResponse) {
+  if (!authResponse?.refreshToken && !authResponse?.accessToken) {
+    return;
+  }
+
+  await authRequest(origin, "/auth/logout", {
+    method: "POST",
+    headers: authResponse.accessToken
+      ? {
+          Authorization: `Bearer ${authResponse.accessToken}`,
+          "Content-Type": "application/json"
+        }
+      : {
+          "Content-Type": "application/json"
+        },
+    body: JSON.stringify({
+      refreshToken: authResponse.refreshToken
+    })
+  }).catch(() => null);
 }
 
 export function AuthProvider({ children }) {
@@ -39,21 +65,23 @@ export function AuthProvider({ children }) {
     let cancelled = false;
 
     async function hydrate() {
-      const [storedSession] = await Promise.all([
-        readJson(SESSION_KEY)
+      const [storedSession, storedServerOrigin] = await Promise.all([
+        readJson(SESSION_KEY),
+        readString(SERVER_ORIGIN_KEY)
       ]);
 
       if (cancelled) {
         return;
       }
 
-      const activeOrigin = getDefaultServerOrigin();
+      const activeOrigin = storedServerOrigin || getDefaultServerOrigin();
       const normalizedActiveOrigin = normalizeServerOrigin(activeOrigin);
 
       if (storedSession?.user?.role === "student") {
-        // Force the stored session to use the active configured origin
-        storedSession.serverOrigin = normalizedActiveOrigin;
-        setSession(storedSession);
+        setSession({
+          ...storedSession,
+          serverOrigin: normalizedActiveOrigin
+        });
       }
 
       setPreferredServerOriginState(normalizedActiveOrigin);
@@ -86,8 +114,7 @@ export function AuthProvider({ children }) {
   }
 
   async function login({ email, password }) {
-    const origin = getDefaultServerOrigin();
-    const normalizedOrigin = await setPreferredServerOrigin(origin);
+    const normalizedOrigin = await setPreferredServerOrigin(preferredServerOrigin);
     const response = await authRequest(normalizedOrigin, "/auth/login", {
       method: "POST",
       headers: {
@@ -100,6 +127,7 @@ export function AuthProvider({ children }) {
     });
 
     if (response.user?.role !== "student") {
+      await revokeAuthSession(normalizedOrigin, response);
       throw new Error("This app is restricted to student accounts.");
     }
 
@@ -115,8 +143,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signup({ name, email, password, hostelId, roomNumber }) {
-    const origin = getDefaultServerOrigin();
-    const normalizedOrigin = await setPreferredServerOrigin(origin);
+    const normalizedOrigin = await setPreferredServerOrigin(preferredServerOrigin);
     const response = await authRequest(normalizedOrigin, "/auth/signup", {
       method: "POST",
       headers: {
@@ -132,6 +159,7 @@ export function AuthProvider({ children }) {
     });
 
     if (response.user?.role !== "student") {
+      await revokeAuthSession(normalizedOrigin, response);
       throw new Error("This app is restricted to student accounts.");
     }
 
@@ -147,8 +175,7 @@ export function AuthProvider({ children }) {
   }
 
   async function getHostels() {
-    const origin = getDefaultServerOrigin();
-    const normalizedOrigin = normalizeServerOrigin(origin);
+    const normalizedOrigin = normalizeServerOrigin(preferredServerOrigin);
     const response = await authRequest(normalizedOrigin, "/auth/hostels", {
       method: "GET"
     });
@@ -172,7 +199,8 @@ export function AuthProvider({ children }) {
 
     const nextSession = {
       ...currentSession,
-      accessToken: response.accessToken
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken || currentSession.refreshToken
     };
 
     await persistSession(nextSession);

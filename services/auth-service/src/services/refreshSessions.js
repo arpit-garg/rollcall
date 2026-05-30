@@ -1,8 +1,10 @@
+import { createHmac } from "node:crypto";
 import { env } from "../config/env.js";
 import { getRedisClient } from "../config/redis.js";
 
 function refreshSessionKey(token) {
-  return `${env.refreshTokenNamespace}:${token}`;
+  const tokenDigest = createHmac("sha256", env.refreshTokenSecret).update(token).digest("hex");
+  return `${env.refreshTokenNamespace}:${tokenDigest}`;
 }
 
 export async function persistRefreshSession(token, payload, ttlMs) {
@@ -16,6 +18,13 @@ export async function persistRefreshSession(token, payload, ttlMs) {
 export async function getRefreshSession(token) {
   const redis = await getRedisClient();
   const payload = await redis.get(refreshSessionKey(token));
+
+  return payload ? JSON.parse(payload) : null;
+}
+
+export async function consumeRefreshSession(token) {
+  const redis = await getRedisClient();
+  const payload = await redis.sendCommand(["GETDEL", refreshSessionKey(token)]);
 
   return payload ? JSON.parse(payload) : null;
 }

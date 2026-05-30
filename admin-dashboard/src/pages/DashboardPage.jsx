@@ -13,20 +13,26 @@ import { useSocket } from "../hooks/useSocket.js";
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
-  const { authorizedRequest } = useAuth();
+  const { authorizedRequest, session } = useAuth();
   const [selectedWindowId, setSelectedWindowId] = useState("");
   const [windowForm, setWindowForm] = useState(createDefaultWindowFormValues);
   const [overrideRecord, setOverrideRecord] = useState(null);
   const [overrideReason, setOverrideReason] = useState("");
 
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected } = useSocket(session);
 
   const healthQuery = useQuery({
     queryKey: ["queue-health"],
     queryFn: async () => {
-      const response = await fetch(
-        (import.meta.env.VITE_ATTENDANCE_API_BASE_URL || "http://localhost:3002").replace(/\/api\/v1$/, "") + "/health"
-      );
+      const attendanceBaseUrl = import.meta.env.VITE_ATTENDANCE_API_BASE_URL || "http://localhost:3002/api/v1";
+      const configuredHealthUrl = import.meta.env.VITE_ATTENDANCE_HEALTH_URL;
+      const healthBaseUrl = attendanceBaseUrl.replace(/\/api\/v1(?:\/.*)?$/, "").replace(/\/$/, "");
+      const healthUrl =
+        configuredHealthUrl ||
+        (healthBaseUrl.includes(":3002")
+          ? `${healthBaseUrl}/health`
+          : `${healthBaseUrl}/health/attendance`);
+      const response = await fetch(healthUrl);
       if (!response.ok) throw new Error("Health check failed");
       return response.json();
     },

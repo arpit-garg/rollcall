@@ -22,6 +22,19 @@ function mapRecord(row) {
   };
 }
 
+function mapRecordWithHostel(row) {
+  const record = mapRecord(row);
+
+  if (!record) {
+    return null;
+  }
+
+  return {
+    ...record,
+    hostelId: row.hostel_id
+  };
+}
+
 export async function findRecordByJobIdForStudent(jobId, studentId) {
   const { rows } = await pool.query(
     `
@@ -106,12 +119,17 @@ export async function resolveRecord(jobId, outcome) {
       WHERE job_id = $1
         AND status = 'pending'
       RETURNING id, window_id, student_id, status, job_id, geo_lat, geo_lng, geo_verified,
-                face_score, liveness_score, submitted_at, resolved_at
+                face_score, liveness_score, submitted_at, resolved_at,
+                (
+                  SELECT hostel_id
+                  FROM attendance_windows
+                  WHERE attendance_windows.id = attendance_records.window_id
+                ) AS hostel_id
     `,
     [jobId, outcome.status, outcome.faceScore, outcome.livenessScore]
   );
 
-  return mapRecord(rows[0]);
+  return mapRecordWithHostel(rows[0]);
 }
 
 export async function getStudentHistory(studentId) {
@@ -158,10 +176,7 @@ export async function getRecordById(recordId) {
     return null;
   }
 
-  return {
-    ...mapRecord(rows[0]),
-    hostelId: rows[0].hostel_id
-  };
+  return mapRecordWithHostel(rows[0]);
 }
 
 export async function createOverride({ recordId, wardenId, reason }) {
@@ -176,11 +191,17 @@ export async function createOverride({ recordId, wardenId, reason }) {
         SET status = 'overridden',
             resolved_at = now()
         WHERE id = $1
+          AND status = 'failed'
         RETURNING id, window_id, student_id, status, job_id, geo_lat, geo_lng, geo_verified,
                   face_score, liveness_score, submitted_at, resolved_at
       `,
       [recordId]
     );
+
+    if (!recordResult.rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
 
     const overrideResult = await client.query(
       `

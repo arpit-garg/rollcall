@@ -27,12 +27,46 @@ client = Minio(
 )
 
 
+def _validate_object_key(object_key: str, allowed_prefixes: tuple[str, ...]) -> str:
+    if not object_key or not isinstance(object_key, str):
+        raise ValueError("object key is required")
+    if object_key.startswith("/") or "\\" in object_key or "//" in object_key:
+        raise ValueError("invalid object key")
+    if any(part in {"", ".", ".."} for part in object_key.split("/")):
+        raise ValueError("invalid object key")
+    if not any(object_key.startswith(prefix) for prefix in allowed_prefixes):
+        raise ValueError("object key prefix is not allowed")
+    return object_key
+
+
+def _validate_embedding_array(embedding: np.ndarray) -> np.ndarray | None:
+    try:
+        array = np.asarray(embedding, dtype=np.float32)
+    except (TypeError, ValueError):
+        return None
+
+    if array.shape != (512,) or not np.all(np.isfinite(array)):
+        return None
+    if np.linalg.norm(array) <= 0:
+        return None
+    return array
+
+
 def ensure_bucket() -> None:
     if not client.bucket_exists(settings.minio_bucket):
         client.make_bucket(settings.minio_bucket)
 
 
+def is_storage_ready() -> bool:
+    try:
+        ensure_bucket()
+        return True
+    except Exception:
+        return False
+
+
 def read_object_bytes(object_key: str) -> bytes:
+    object_key = _validate_object_key(object_key, ("temp/enrollment/", "temp/verification/"))
     ensure_bucket()
     response = client.get_object(settings.minio_bucket, object_key)
     try:
@@ -58,6 +92,7 @@ def put_template_object(student_id: str, payload: dict) -> str:
 
 
 def remove_object_if_exists(object_key: str) -> None:
+    object_key = _validate_object_key(object_key, ("temp/enrollment/", "temp/verification/"))
     ensure_bucket()
     try:
         client.remove_object(settings.minio_bucket, object_key)
@@ -67,6 +102,7 @@ def remove_object_if_exists(object_key: str) -> None:
 
 
 def object_exists(object_key: str) -> bool:
+    object_key = _validate_object_key(object_key, ("templates/",))
     ensure_bucket()
     try:
         client.stat_object(settings.minio_bucket, object_key)
@@ -82,9 +118,13 @@ def save_embedding(student_id: str, embedding: np.ndarray) -> str:
 
     Returns the object key where the embedding was stored.
     """
+    valid_embedding = _validate_embedding_array(embedding)
+    if valid_embedding is None:
+        raise ValueError("embedding must be a finite 512-dimensional vector")
+
     ensure_bucket()
     buf = io.BytesIO()
-    np.save(buf, embedding)
+    np.save(buf, valid_embedding)
     data = buf.getvalue()
     object_key = f"templates/{student_id}/embedding.npy"
     client.put_object(
@@ -105,6 +145,8 @@ def load_embedding(template_ref: str) -> np.ndarray | None:
     Returns None if the object is not found.
     """
     if template_ref.startswith("seed://"):
+        if not settings.is_demo_bypass_enabled:
+            return None
         # Seed data: return a deterministic random embedding so demo
         # verification can proceed (will score low similarity vs real faces)
         rng = np.random.RandomState(hash(template_ref) % (2**31))
@@ -112,12 +154,13 @@ def load_embedding(template_ref: str) -> np.ndarray | None:
         vec = vec / (np.linalg.norm(vec) + 1e-10)
         return vec
 
+    template_ref = _validate_object_key(template_ref, ("templates/",))
     ensure_bucket()
     try:
         response = client.get_object(settings.minio_bucket, template_ref)
         try:
             buf = io.BytesIO(response.read())
-            return np.load(buf)
+            return _validate_embedding_array(np.load(buf, allow_pickle=False))
         finally:
             response.close()
             response.release_conn()
@@ -125,4 +168,3 @@ def load_embedding(template_ref: str) -> np.ndarray | None:
         if error.code == "NoSuchKey":
             return None
         raise
-

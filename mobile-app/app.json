@@ -11,9 +11,7 @@
     "android": {
       "package": "com.college.hostelattendance"
     },
-    "extra": {
-      "defaultServerOrigin": "https://smart-plants-repair.loca.lt"
-    },
+    "extra": {},
     "plugins": [
       [
         "expo-camera",

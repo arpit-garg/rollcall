@@ -3,8 +3,9 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("warden@college.edu");
-  const [password, setPassword] = useState("Warden@123");
+  const demoCredentialsEnabled = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_CREDENTIALS === "true";
+  const [email, setEmail] = useState(() => (demoCredentialsEnabled ? "warden@college.edu" : ""));
+  const [password, setPassword] = useState(() => (demoCredentialsEnabled ? "Warden@123" : ""));
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,8 +48,8 @@ export default function LoginPage() {
               <p className="mt-3 text-lg font-semibold">Override log with reasons</p>
             </div>
             <div className="rounded-3xl bg-white/10 p-4 backdrop-blur">
-              <p className="text-xs uppercase tracking-[0.2em] text-white/65">Demo Account</p>
-              <p className="mt-3 text-lg font-semibold">Seeded warden credentials ready</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-white/65">Access Scope</p>
+              <p className="mt-3 text-lg font-semibold">Hostel-scoped warden control</p>
             </div>
           </div>
         </section>
@@ -57,7 +58,7 @@ export default function LoginPage() {
           <p className="text-sm uppercase tracking-[0.25em] text-steel">Sign In</p>
           <h2 className="mt-3 text-3xl font-semibold text-ink">Warden Access</h2>
           <p className="mt-3 text-sm text-steel">
-            Use the seeded demo warden account or your own warden credentials.
+            Use your assigned warden credentials to continue.
           </p>
 
           <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
@@ -100,11 +101,13 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 rounded-3xl bg-slate-50 p-4 text-sm text-steel">
-            <p className="font-semibold text-ink">Demo credentials</p>
-            <p className="mt-2">Email: warden@college.edu</p>
-            <p>Password: Warden@123</p>
-          </div>
+          {demoCredentialsEnabled ? (
+            <div className="mt-8 rounded-3xl bg-slate-50 p-4 text-sm text-steel">
+              <p className="font-semibold text-ink">Demo credentials</p>
+              <p className="mt-2">Email: warden@college.edu</p>
+              <p>Password: Warden@123</p>
+            </div>
+          ) : null}
         </section>
       </div>
     </div>

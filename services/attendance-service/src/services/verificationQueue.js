@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { getRedisClient } from "../config/redis.js";
 import { requestAttendanceVerification } from "./mlClient.js";
 import { resolveAttendanceRecord } from "./attendanceService.js";
+import { removeObject } from "./objectStorage.js";
 import { emitAttendanceResolved } from "./socketEmitter.js";
 
 const metrics = {
@@ -19,7 +20,30 @@ let stopRequested = false;
 let workerRedisClient;
 let workerConnectPromise;
 
+async function requeueProcessingJobs(redis) {
+  while (!stopRequested) {
+    const payload = await redis.sendCommand([
+      "RPOPLPUSH",
+      env.verificationProcessingQueueName,
+      env.verificationQueueName
+    ]);
+
+    if (!payload) {
+      return;
+    }
+  }
+}
+
 async function processVerificationJob(job) {
+  if (env.enableDemoResolution) {
+    await new Promise((resolve) => setTimeout(resolve, env.verificationDemoDelayMs));
+    return {
+      status: "verified",
+      faceScore: 0.98,
+      livenessScore: 0.99
+    };
+  }
+
   return requestAttendanceVerification({
     studentId: job.studentId,
     jobId: job.jobId,
@@ -44,19 +68,32 @@ async function resolveRecordWithRetry(jobId, outcome, maxRetries = 5) {
   }
 }
 
+async function removeObjectBestEffort(objectKey) {
+  try {
+    await removeObject(objectKey);
+  } catch (error) {
+    console.warn(`[Worker] Failed to remove verification object ${objectKey}: ${error.message}`);
+  }
+}
+
 async function workerLoop() {
   metrics.workerActive = true;
+  const redis = await getWorkerRedisClient();
+  await requeueProcessingJobs(redis);
 
   while (!stopRequested) {
     try {
-      const redis = await getWorkerRedisClient();
-      const result = await redis.sendCommand(["BRPOP", env.verificationQueueName, "1"]);
+      const payload = await redis.sendCommand([
+        "BRPOPLPUSH",
+        env.verificationQueueName,
+        env.verificationProcessingQueueName,
+        "1"
+      ]);
 
-      if (!result) {
+      if (!payload) {
         continue;
       }
 
-      const [, payload] = result;
       const job = JSON.parse(payload);
 
       let outcome;
@@ -72,8 +109,15 @@ async function workerLoop() {
       }
 
       try {
-        await resolveRecordWithRetry(job.jobId, outcome);
-        emitAttendanceResolved({ jobId: job.jobId, studentId: job.studentId, ...outcome });
+        const resolvedRecord = await resolveRecordWithRetry(job.jobId, outcome);
+        await removeObjectBestEffort(job.imageObjectKey);
+        await redis.lRem(env.verificationProcessingQueueName, 1, payload);
+        emitAttendanceResolved({
+          jobId: job.jobId,
+          studentId: job.studentId,
+          hostelId: resolvedRecord?.hostelId,
+          ...outcome
+        });
 
         if (outcome.status === "failed") {
           metrics.failedJobs += 1;
@@ -119,19 +163,24 @@ export async function enqueueVerificationJob(job) {
 
 export async function getVerificationQueueStatus() {
   let pendingJobs = 0;
+  let processingJobs = 0;
 
   try {
     const redis = await getRedisClient();
     const rawPendingJobs = await redis.sendCommand(["LLEN", env.verificationQueueName]);
+    const rawProcessingJobs = await redis.sendCommand(["LLEN", env.verificationProcessingQueueName]);
     pendingJobs = Number(rawPendingJobs);
+    processingJobs = Number(rawProcessingJobs);
   } catch (error) {
     metrics.lastFailure = error.message;
     pendingJobs = -1;
+    processingJobs = -1;
   }
 
   return {
     ...metrics,
-    pendingJobs
+    pendingJobs,
+    processingJobs
   };
 }
 

@@ -38,6 +38,11 @@ export async function createSubmission({
   }
 
   const hostel = await findHostelById(hostelId);
+
+  if (!hostel) {
+    throw httpError(404, "NOT_FOUND", "Hostel not found");
+  }
+
   const distance = haversineDistance(latitude, longitude, hostel.centerLat, hostel.centerLng);
 
   if (distance > hostel.radiusMetres) {
@@ -49,7 +54,7 @@ export async function createSubmission({
   if (existingJobId) {
     const existingRecord = await findRecordByJobIdForStudent(existingJobId, studentId);
 
-    if (existingRecord) {
+    if (existingRecord && existingRecord.status !== "failed") {
       return {
         duplicate: true,
         record: existingRecord
@@ -155,11 +160,19 @@ export async function createAttendanceOverride({ recordId, wardenId, hostelId, r
     throw httpError(404, "NOT_FOUND", "Attendance record not found");
   }
 
+  if (record.status !== "failed") {
+    throw httpError(409, "OVERRIDE_NOT_ALLOWED", "Only failed attendance records can be overridden");
+  }
+
   const result = await createOverride({
     recordId,
     wardenId,
     reason: reason.trim()
   });
+
+  if (!result) {
+    throw httpError(409, "OVERRIDE_NOT_ALLOWED", "Only failed attendance records can be overridden");
+  }
 
   await appendAuditLog(wardenId, "ATTENDANCE_OVERRIDE", "attendance_records", recordId, {
     reason: reason.trim()
@@ -173,6 +186,7 @@ export async function getOverrides(hostelId) {
 }
 
 export async function resolveAttendanceRecord(jobId, outcome) {
+  validateOutcome(outcome);
   const record = await resolveRecord(jobId, outcome);
 
   if (record) {
@@ -184,4 +198,27 @@ export async function resolveAttendanceRecord(jobId, outcome) {
   }
 
   return record;
+}
+
+function validateOutcome(outcome) {
+  if (!["verified", "failed"].includes(outcome.status)) {
+    throw httpError(422, "VALIDATION_ERROR", "Verification status must be verified or failed");
+  }
+
+  outcome.faceScore = validateScore(outcome.faceScore, "faceScore");
+  outcome.livenessScore = validateScore(outcome.livenessScore, "livenessScore");
+}
+
+function validateScore(score, fieldName) {
+  if (score === null || score === undefined) {
+    return null;
+  }
+
+  const numericScore = Number(score);
+
+  if (!Number.isFinite(numericScore) || numericScore < 0 || numericScore > 1) {
+    throw httpError(422, "VALIDATION_ERROR", `${fieldName} must be between 0 and 1`);
+  }
+
+  return numericScore;
 }

@@ -1,7 +1,11 @@
 import { Platform } from "react-native";
 import appConfig from "../../app.json";
 
-const CONFIG_SERVER_ORIGIN = appConfig?.expo?.extra?.defaultServerOrigin;
+const ENV_SERVER_ORIGIN =
+  typeof process !== "undefined"
+    ? process.env?.EXPO_PUBLIC_SERVER_ORIGIN || process.env?.MOBILE_DEFAULT_SERVER_ORIGIN
+    : undefined;
+const CONFIG_SERVER_ORIGIN = ENV_SERVER_ORIGIN || appConfig?.expo?.extra?.defaultServerOrigin;
 const DEFAULT_ANDROID_ORIGIN = "http://10.0.2.2";
 const DEFAULT_LOCAL_ORIGIN = "http://localhost";
 

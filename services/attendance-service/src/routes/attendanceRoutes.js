@@ -18,6 +18,14 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+async function removeObjectBestEffort(objectKey, context) {
+  try {
+    await removeObject(objectKey);
+  } catch (cleanupError) {
+    console.warn(`[Attendance] Failed to remove temp image after ${context}: ${cleanupError.message}`);
+  }
+}
+
 router.get("/current-window", async (req, res, next) => {
   try {
     return res.status(200).json({
@@ -54,19 +62,13 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
       });
     }
 
-    const result = await createSubmission({
-      studentId: req.user.id,
-      hostelId: req.user.hostelId,
-      latitude,
-      longitude,
-      idempotencyKey
-    });
-
-    if (result.duplicate) {
-      return res.status(409).json({
-        jobId: result.record.jobId,
-        status: result.record.status,
-        message: "Submission already in progress"
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "latitude must be between -90 and 90 and longitude must be between -180 and 180",
+          retryable: false
+        }
       });
     }
 
@@ -78,6 +80,30 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
       contentType: req.file.mimetype
     });
 
+    let result;
+
+    try {
+      result = await createSubmission({
+        studentId: req.user.id,
+        hostelId: req.user.hostelId,
+        latitude,
+        longitude,
+        idempotencyKey
+      });
+    } catch (error) {
+      await removeObjectBestEffort(imageObjectKey, "submission rejection");
+      throw error;
+    }
+
+    if (result.duplicate) {
+      await removeObjectBestEffort(imageObjectKey, "duplicate submission");
+      return res.status(409).json({
+        jobId: result.record.jobId,
+        status: result.record.status,
+        message: "Submission already in progress"
+      });
+    }
+
     try {
       await enqueueVerificationJob({
         jobId: result.record.jobId,
@@ -87,7 +113,7 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
         templateRef: result.templateRef
       });
     } catch (error) {
-      await removeObject(imageObjectKey);
+      await removeObjectBestEffort(imageObjectKey, "enqueue failure");
       await resolveAttendanceRecord(result.record.jobId, {
         status: "failed",
         faceScore: null,

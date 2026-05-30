@@ -1,7 +1,27 @@
 import { env } from "../config/env.js";
 
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), env.mlRequestTimeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("ML request timed out");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function requestEnrollmentProcessing({ studentId, imageObjectKey }) {
-  const response = await fetch(`${env.mlServiceUrl}/api/v1/internal/enroll`, {
+  const response = await fetchWithTimeout(`${env.mlServiceUrl}/api/v1/internal/enroll`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -20,7 +40,7 @@ export async function requestEnrollmentProcessing({ studentId, imageObjectKey })
 }
 
 export async function requestAttendanceVerification({ studentId, jobId, imageObjectKey, templateRef }) {
-  const response = await fetch(`${env.mlServiceUrl}/api/v1/internal/verify`, {
+  const response = await fetchWithTimeout(`${env.mlServiceUrl}/api/v1/internal/verify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

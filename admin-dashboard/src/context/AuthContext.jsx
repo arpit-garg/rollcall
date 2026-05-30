@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { attendanceRequest, authRequest } from "../api/client.js";
 
-const STORAGE_KEY = "hostel-attendance.warden-session";
+const STORAGE_KEY = "hostel-attendance.warden-user";
 
 const AuthContext = createContext(null);
 
@@ -18,14 +18,15 @@ function loadStoredSession() {
 
   try {
     const parsed = JSON.parse(rawSession);
-    return parsed?.user?.role === "warden" ? parsed : null;
+    const user = parsed?.user?.role === "warden" ? parsed.user : parsed?.role === "warden" ? parsed : null;
+    return user ? { accessToken: null, user } : null;
   } catch (_error) {
     window.sessionStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }
 
-function persistSession(session) {
+function persistUser(session) {
   if (typeof window === "undefined") {
     return;
   }
@@ -35,7 +36,7 @@ function persistSession(session) {
     return;
   }
 
-  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ user: session.user }));
 }
 
 export function AuthProvider({ children }) {
@@ -43,7 +44,19 @@ export function AuthProvider({ children }) {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    setIsHydrated(true);
+    if (!session?.user || session.accessToken) {
+      setIsHydrated(true);
+      return;
+    }
+
+    refreshAccessToken(session)
+      .catch(() => {
+        setSession(null);
+        persistUser(null);
+      })
+      .finally(() => setIsHydrated(true));
+    // Restore once from the refresh cookie after loading the persisted warden user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function login({ email, password }) {
@@ -77,7 +90,7 @@ export function AuthProvider({ children }) {
     };
 
     setSession(nextSession);
-    persistSession(nextSession);
+    persistUser(nextSession);
 
     return nextSession;
   }
@@ -97,7 +110,7 @@ export function AuthProvider({ children }) {
     };
 
     setSession(nextSession);
-    persistSession(nextSession);
+    persistUser(nextSession);
 
     return nextSession;
   }
@@ -116,7 +129,7 @@ export function AuthProvider({ children }) {
       // Local logout should still succeed even if the cookie is already gone.
     } finally {
       setSession(null);
-      persistSession(null);
+      persistUser(null);
     }
   }
 
