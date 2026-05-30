@@ -49,6 +49,21 @@ export async function removeObject(objectKey) {
   await client.removeObject(env.minioBucket, objectKey);
 }
 
+export async function objectExists(objectKey) {
+  const client = await ensureBucket();
+
+  try {
+    await client.statObject(env.minioBucket, objectKey);
+    return true;
+  } catch (error) {
+    if (["NoSuchKey", "NotFound"].includes(error.code)) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 export async function listObjects(prefix) {
   const client = await ensureBucket();
   const objects = [];

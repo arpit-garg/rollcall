@@ -10,10 +10,11 @@ import {
   listOverrides,
   resolveRecord
 } from "../repositories/attendanceRepository.js";
-import { findFaceTemplate } from "../repositories/faceTemplatesRepository.js";
+import { findFaceTemplate, invalidateTemplate } from "../repositories/faceTemplatesRepository.js";
 import { findHostelById } from "../repositories/hostelsRepository.js";
 import { findActiveWindow } from "../repositories/windowsRepository.js";
 import { env } from "../config/env.js";
+import { objectExists } from "./objectStorage.js";
 import { haversineDistance } from "./geo.js";
 import { httpError } from "./httpError.js";
 import { getSubmissionJobId, rememberSubmissionJob } from "./idempotencyStore.js";
@@ -37,6 +38,15 @@ export async function createSubmission({
   const template = await findFaceTemplate(studentId);
 
   if (!template || !template.is_valid) {
+    throw httpError(409, "TEMPLATE_NOT_ENROLLED", "Face enrollment is required before attendance");
+  }
+
+  if (
+    template.embedding_ref?.startsWith("templates/") &&
+    !(await objectExists(template.embedding_ref))
+  ) {
+    console.warn(`[Attendance] Missing template object ${template.embedding_ref}; marking student ${studentId} for re-enrollment`);
+    await invalidateTemplate(studentId);
     throw httpError(409, "TEMPLATE_NOT_ENROLLED", "Face enrollment is required before attendance");
   }
 

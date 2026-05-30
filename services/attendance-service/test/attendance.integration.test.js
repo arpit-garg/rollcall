@@ -175,6 +175,14 @@ async function listObjectNames(prefix) {
   return objects;
 }
 
+async function removeObjectsWithPrefix(prefix) {
+  const objectNames = await listObjectNames(prefix);
+
+  for (const objectName of objectNames) {
+    await minio.removeObject(process.env.MINIO_BUCKET, objectName);
+  }
+}
+
 async function waitFor(assertionFn, timeoutMs = 5000, intervalMs = 200) {
   const startedAt = Date.now();
 
@@ -282,10 +290,10 @@ beforeEach(async () => {
     [otherHostelStudentId]
   );
 
-  const existingObjects = await listObjectNames("");
-  for (const objectName of existingObjects) {
-    await minio.removeObject(process.env.MINIO_BUCKET, objectName);
-  }
+  await removeObjectsWithPrefix("temp/enrollment/");
+  await removeObjectsWithPrefix("temp/verification/");
+  await removeObjectsWithPrefix(`templates/${studentId}/`);
+  await removeObjectsWithPrefix(`templates/${otherHostelStudentId}/`);
 });
 
 after(async () => {
@@ -490,6 +498,47 @@ test("student submit rejects GPS accuracy above the accepted mobile threshold", 
   assert.equal(body.error.code, "VALIDATION_ERROR");
 });
 
+test("student submit rejects and invalidates a missing stored face template", async () => {
+  await createWindowForTests();
+  await pool.query(
+    `
+      UPDATE face_templates
+      SET embedding_ref = $2,
+          model_version = 'facenet-512-v1',
+          is_valid = true,
+          enrollment_status = 'idle',
+          enrollment_attempt_id = NULL
+      WHERE student_id = $1
+    `,
+    [studentId, `templates/${studentId}/missing-for-submit.npy`]
+  );
+
+  const form = new FormData();
+  form.append("image", new Blob(["demo-image"], { type: "image/jpeg" }), "capture.jpg");
+  form.append("latitude", "28.613939");
+  form.append("longitude", "77.209023");
+  form.append("idempotency_key", "16161616-1616-4616-8616-161616161616");
+
+  const response = await fetch(`${baseUrl}/api/v1/attendance/submit`, {
+    method: "POST",
+    headers: {
+      ...studentAuthHeader
+    },
+    body: form
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "TEMPLATE_NOT_ENROLLED");
+
+  const { rows } = await pool.query(
+    "SELECT is_valid, model_version FROM face_templates WHERE student_id = $1",
+    [studentId]
+  );
+  assert.equal(rows[0].is_valid, false);
+  assert.equal(rows[0].model_version, "failed");
+});
+
 test("history and job polling reflect resolved attendance records", async () => {
   await createWindowForTests();
 
@@ -593,6 +642,38 @@ test("enrollment stores template ref in minio and cleans temp object", async () 
     const tempObjects = await listObjectNames("temp/enrollment/");
     return tempObjects.length === 0;
   });
+});
+
+test("enrollment status requires the stored template object to still exist", async () => {
+  const missingTemplateRef = `templates/${studentId}/missing-template.npy`;
+  await pool.query(
+    `
+      UPDATE face_templates
+      SET embedding_ref = $2,
+          model_version = 'facenet-512-v1',
+          is_valid = true,
+          enrollment_status = 'idle',
+          enrollment_attempt_id = NULL
+      WHERE student_id = $1
+    `,
+    [studentId, missingTemplateRef]
+  );
+
+  const statusResponse = await jsonRequest(`${baseUrl}/api/v1/enrollment/status`, {
+    headers: {
+      ...studentAuthHeader
+    }
+  });
+
+  assert.equal(statusResponse.status, 200);
+  assert.equal(statusResponse.json.status, "re_enrollment_required");
+
+  const { rows } = await pool.query(
+    "SELECT is_valid, model_version FROM face_templates WHERE student_id = $1",
+    [studentId]
+  );
+  assert.equal(rows[0].is_valid, false);
+  assert.equal(rows[0].model_version, "failed");
 });
 
 test("warden override persists override and audit logs", async () => {
@@ -959,7 +1040,14 @@ test("re-enrollment keeps the old template until the latest attempt succeeds", a
   assert.equal(rows[0].embedding_ref, oldTemplateRef);
   assert.equal(rows[0].enrollment_status, "processing");
 
-  await completeEnrollment(studentId, "facenet-v1", `templates/${studentId}/latest.json`, latestAttemptId);
+  const latestTemplateRef = `templates/${studentId}/latest.json`;
+  await minio.putObject(
+    process.env.MINIO_BUCKET,
+    latestTemplateRef,
+    Buffer.from("latest-template"),
+    "latest-template".length
+  );
+  await completeEnrollment(studentId, "facenet-v1", latestTemplateRef, latestAttemptId);
 
   rows = (
     await pool.query(
@@ -967,7 +1055,7 @@ test("re-enrollment keeps the old template until the latest attempt succeeds", a
       [studentId]
     )
   ).rows;
-  assert.equal(rows[0].embedding_ref, `templates/${studentId}/latest.json`);
+  assert.equal(rows[0].embedding_ref, latestTemplateRef);
   assert.equal(rows[0].enrollment_status, "idle");
   assert.equal(rows[0].is_valid, true);
 

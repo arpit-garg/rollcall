@@ -8,7 +8,7 @@ import {
   upsertEnrolledTemplate
 } from "../repositories/faceTemplatesRepository.js";
 import { findUserById } from "../repositories/usersRepository.js";
-import { removeObject } from "./objectStorage.js";
+import { objectExists, removeObject } from "./objectStorage.js";
 import { httpError } from "./httpError.js";
 
 async function removeObjectBestEffort(objectKey) {
@@ -20,6 +20,18 @@ async function removeObjectBestEffort(objectKey) {
 }
 
 export async function getEnrollmentStatus(studentId) {
+  const template = await findFaceTemplate(studentId);
+
+  if (
+    template?.is_valid &&
+    template.enrollment_status !== "processing" &&
+    template.embedding_ref?.startsWith("templates/") &&
+    !(await objectExists(template.embedding_ref))
+  ) {
+    console.warn(`[Enrollment] Missing template object ${template.embedding_ref}; marking student ${studentId} for re-enrollment`);
+    await invalidateTemplate(studentId);
+  }
+
   return getStatusFromDb(studentId);
 }
 
