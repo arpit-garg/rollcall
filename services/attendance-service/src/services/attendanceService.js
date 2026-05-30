@@ -60,10 +60,23 @@ export async function createSubmission({
   const nonFailedRecord = await findActiveRecord(activeWindow.id, studentId);
 
   if (nonFailedRecord) {
-    return {
-      duplicate: true,
-      record: nonFailedRecord
-    };
+    if (
+      nonFailedRecord.status === "pending" &&
+      new Date().getTime() - new Date(nonFailedRecord.submittedAt).getTime() > 5 * 60 * 1000
+    ) {
+      console.warn(`[Attendance] Stuck pending record found for student ${studentId} (submitted at ${nonFailedRecord.submittedAt}). Auto-failing to allow retry.`);
+      await resolveAttendanceRecord(nonFailedRecord.jobId, {
+        status: "failed",
+        faceScore: null,
+        livenessScore: null
+      });
+      // Fall through so the student can submit a new record!
+    } else {
+      return {
+        duplicate: true,
+        record: nonFailedRecord
+      };
+    }
   }
 
   const failedAttempts = await countFailedAttempts(activeWindow.id, studentId);

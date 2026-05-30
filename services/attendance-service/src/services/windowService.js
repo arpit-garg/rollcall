@@ -4,13 +4,19 @@ import {
   createWindow as createWindowRecord,
   getWindowRecords,
   findActiveWindow,
-  listWindows
+  listWindows,
+  findOverlappingWindow
 } from "../repositories/windowsRepository.js";
 import { httpError } from "./httpError.js";
 
 export async function openWindow({ hostelId, openedBy, opensAt, closesAt }) {
   if (new Date(closesAt).getTime() <= new Date(opensAt).getTime()) {
     throw httpError(400, "VALIDATION_ERROR", "closes_at must be after opens_at");
+  }
+
+  const overlapping = await findOverlappingWindow(hostelId, opensAt, closesAt);
+  if (overlapping) {
+    throw httpError(409, "OVERLAPPING_WINDOW", "An active attendance window already overlaps with the requested time range");
   }
 
   const window = await createWindowRecord({

@@ -123,3 +123,23 @@ export async function getWindowRecords(windowId, hostelId) {
     resolvedAt: row.resolved_at
   }));
 }
+
+export async function findOverlappingWindow(hostelId, opensAt, closesAt) {
+  const { rows } = await pool.query(
+    `
+      SELECT id, opens_at, closes_at
+      FROM attendance_windows
+      WHERE hostel_id = $1
+        AND is_open = true
+        AND (
+          (opens_at <= $2 AND closes_at > $2) OR
+          (opens_at < $3 AND closes_at >= $3) OR
+          (opens_at >= $2 AND closes_at <= $3)
+        )
+      LIMIT 1
+    `,
+    [hostelId, opensAt, closesAt]
+  );
+
+  return rows[0] || null;
+}

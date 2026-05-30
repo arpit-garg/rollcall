@@ -60,16 +60,16 @@ class AntiSpoofing:
                     }
 
                 model.load_state_dict(state_dict)
+                model.eval()
+                self.models.append(model)
+                self.scales.append(scale)
                 logger.info("Loaded anti-spoofing weights: %s (scale=%.1f)", weight_path, scale)
-            except FileNotFoundError:
+            except Exception as error:
                 logger.warning(
-                    "Anti-spoofing weights not found: %s — liveness will return 1.0 (always pass)",
+                    "Anti-spoofing weights could not be loaded: %s (%s) — this model configuration will be skipped",
                     weight_path,
+                    error,
                 )
-
-            model.eval()
-            self.models.append(model)
-            self.scales.append(scale)
 
     def _crop_face(
         self,

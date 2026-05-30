@@ -10,6 +10,26 @@ async function ensureBucket() {
     await client.makeBucket(env.minioBucket);
   }
 
+  try {
+    const lifecycleConfig = {
+      Rule: [
+        {
+          ID: "ExpireTempUploads",
+          Status: "Enabled",
+          Filter: {
+            Prefix: "temp/"
+          },
+          Expiration: {
+            Days: 1
+          }
+        }
+      ]
+    };
+    await client.setBucketLifecycle(env.minioBucket, lifecycleConfig);
+  } catch (lifecycleError) {
+    console.warn(`[MinIO] Failed to configure bucket lifecycle: ${lifecycleError.message}`);
+  }
+
   return client;
 }
 

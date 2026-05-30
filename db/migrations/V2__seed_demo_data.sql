@@ -5,6 +5,13 @@ VALUES (
   28.6139390,
   77.2090230,
   150
+),
+(
+  'a5a4bff2-179f-4eb1-8bf0-b8959d8a26bb',
+  'Mbh-F',
+  31.3996,
+  75.5366,
+  150
 )
 ON CONFLICT (id) DO UPDATE
 SET
@@ -43,6 +50,27 @@ VALUES
   'student',
   '0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4',
   'A-204',
+  true
+)
+ON CONFLICT (email) DO UPDATE
+SET
+  name = EXCLUDED.name,
+  password_hash = EXCLUDED.password_hash,
+  role = EXCLUDED.role,
+  hostel_id = EXCLUDED.hostel_id,
+  room_number = EXCLUDED.room_number,
+  is_active = EXCLUDED.is_active;
+
+INSERT INTO users (id, name, email, password_hash, role, hostel_id, room_number, is_active)
+VALUES
+(
+  '015ca63a-111a-4f2f-b1e3-2dac3ee22d4e',
+  'MBH-F Warden',
+  'mbhf@nitj.ac.in',
+  '$2a$10$GtwXiJPyYapRPBoR/Gqkq.D6GwEIxMJB/isVne5CORGS7tnpCKGcW',
+  'warden',
+  'a5a4bff2-179f-4eb1-8bf0-b8959d8a26bb',
+  NULL,
   true
 )
 ON CONFLICT (email) DO UPDATE

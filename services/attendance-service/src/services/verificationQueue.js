@@ -28,37 +28,71 @@ async function processVerificationJob(job) {
   });
 }
 
+async function resolveRecordWithRetry(jobId, outcome, maxRetries = 5) {
+  let delay = 1000;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await resolveAttendanceRecord(jobId, outcome);
+    } catch (error) {
+      console.error(`[Worker] resolveAttendanceRecord attempt ${attempt} failed: ${error.message}`);
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+}
+
 async function workerLoop() {
   metrics.workerActive = true;
-  const redis = await getWorkerRedisClient();
 
   while (!stopRequested) {
-    const result = await redis.sendCommand(["BRPOP", env.verificationQueueName, "1"]);
-
-    if (!result) {
-      continue;
-    }
-
-    const [, payload] = result;
-    const job = JSON.parse(payload);
-
     try {
-      const outcome = await processVerificationJob(job);
-      await resolveAttendanceRecord(job.jobId, outcome);
-      emitAttendanceResolved({ jobId: job.jobId, studentId: job.studentId, ...outcome });
-      metrics.processedJobs += 1;
-      metrics.lastProcessedJobId = job.jobId;
-      metrics.lastProcessedAt = new Date().toISOString();
-      metrics.lastFailure = null;
-    } catch (error) {
-      metrics.failedJobs += 1;
-      metrics.lastFailure = error.message;
-      await resolveAttendanceRecord(job.jobId, {
-        status: "failed",
-        faceScore: null,
-        livenessScore: null
-      });
-      emitAttendanceResolved({ jobId: job.jobId, studentId: job.studentId, status: "failed", faceScore: null, livenessScore: null });
+      const redis = await getWorkerRedisClient();
+      const result = await redis.sendCommand(["BRPOP", env.verificationQueueName, "1"]);
+
+      if (!result) {
+        continue;
+      }
+
+      const [, payload] = result;
+      const job = JSON.parse(payload);
+
+      let outcome;
+      try {
+        outcome = await processVerificationJob(job);
+      } catch (error) {
+        console.error(`[Worker] ML verification job ${job.jobId} failed: ${error.message}`);
+        outcome = {
+          status: "failed",
+          faceScore: null,
+          livenessScore: null
+        };
+      }
+
+      try {
+        await resolveRecordWithRetry(job.jobId, outcome);
+        emitAttendanceResolved({ jobId: job.jobId, studentId: job.studentId, ...outcome });
+
+        if (outcome.status === "failed") {
+          metrics.failedJobs += 1;
+          metrics.lastFailure = `ML verification returned failed status for job ${job.jobId}`;
+        } else {
+          metrics.processedJobs += 1;
+          metrics.lastProcessedJobId = job.jobId;
+          metrics.lastProcessedAt = new Date().toISOString();
+          metrics.lastFailure = null;
+        }
+      } catch (dbError) {
+        console.error(`[Worker] Critical DB failure: could not resolve job ${job.jobId} after retries. Error: ${dbError.message}`);
+        metrics.failedJobs += 1;
+        metrics.lastFailure = `Database resolution failed: ${dbError.message}`;
+      }
+    } catch (outerError) {
+      console.error(`[Worker] Critical outer loop error: ${outerError.message}`);
+      metrics.lastFailure = `Outer loop error: ${outerError.message}`;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }
 

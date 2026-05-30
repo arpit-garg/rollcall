@@ -170,6 +170,12 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
 
   useEffect(() => {
     void refreshDashboard();
+
+    const intervalId = setInterval(() => {
+      void loadCurrentWindow().catch(() => null);
+    }, 10000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -428,13 +434,36 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
               icon={<MaterialCommunityIcons name="face-recognition" size={18} color="#06B6D4" />}
               rightAction={
                 <ActionButton
-                  label={enrollmentStatus.status === "processing" ? "ENROLLING..." : "REGISTER FACE"}
+                  label={
+                    enrollmentStatus.status === "processing"
+                      ? "ENROLLING..."
+                      : enrollmentStatus.status === "enrolled"
+                        ? "ENROLLED"
+                        : "REGISTER FACE"
+                  }
                   onPress={() => openCapture("enrollment")}
-                  disabled={enrollmentStatus.status === "processing"}
+                  disabled={
+                    enrollmentStatus.status === "processing" ||
+                    enrollmentStatus.status === "enrolled"
+                  }
                   icon={<Ionicons name="scan" size={16} color="#081f29" />}
                 />
               }
             >
+              <StatusCard
+                label="REGISTRATION STATUS"
+                value={enrollmentLabel}
+                tone={
+                  enrollmentStatus.status === "enrolled"
+                    ? "success"
+                    : enrollmentStatus.status === "processing"
+                      ? "accent"
+                      : enrollmentStatus.status === "re_enrollment_required"
+                        ? "danger"
+                        : "light"
+                }
+              />
+              <View style={{ height: 8 }} />
               <Text style={styles.sectionCopy}>
                 The registered photo is converted to a vector embedding. High-security encryption stores the hash; raw pixel data is deleted post-computation.
               </Text>
@@ -448,11 +477,17 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                 <ActionButton
                   label={attendanceJob?.status === "pending" ? "VERIFYING..." : "MARK ATTENDANCE"}
                   onPress={() => openCapture("attendance")}
-                  disabled={attendanceJob?.status === "pending" || enrollmentStatus.status !== "enrolled"}
+                  disabled={attendanceJob?.status === "pending" || enrollmentStatus.status !== "enrolled" || !currentWindow}
                   icon={<Ionicons name="finger-print-outline" size={16} color="#081f29" />}
                 />
               }
             >
+              <StatusCard
+                label="ATTENDANCE WINDOW"
+                value={currentWindow ? "OPEN - ACCEPTING BIOMETRICS" : "CLOSED - CHECK BACK LATER"}
+                tone={currentWindow ? "accent" : "light"}
+              />
+              <View style={{ height: 8 }} />
               <StatusCard
                 label="LATEST VERIFICATION ATTEMPT"
                 value={attendanceLabel}

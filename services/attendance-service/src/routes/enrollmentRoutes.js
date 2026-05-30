@@ -49,6 +49,8 @@ router.post("/face", upload.single("image"), async (req, res, next) => {
     void runEnrollmentPipeline({
       studentId: req.user.id,
       imageObjectKey
+    }).catch((error) => {
+      console.error(`[Enrollment Pipeline] Fatal background pipeline error: ${error.message}`);
     });
 
     return res.status(202).json({

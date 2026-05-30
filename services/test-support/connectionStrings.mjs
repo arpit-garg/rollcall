@@ -1,4 +1,9 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 function toUrl(value, protocol) {
   return new URL(value.includes("://") ? value : `${protocol}//${value}`);
@@ -8,6 +13,9 @@ function rewriteDockerHostname(value, protocol, host = "127.0.0.1") {
   const url = toUrl(value, protocol);
 
   if (["postgres", "redis", "minio"].includes(url.hostname)) {
+    if (url.hostname === "postgres" && url.port === "5432") {
+      url.port = "5435";
+    }
     url.hostname = host;
   }
 
