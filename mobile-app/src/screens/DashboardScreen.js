@@ -27,6 +27,7 @@ import {
   getEnrollmentTone,
   getAttendanceTone
 } from "../utils/helpers";
+import { getBestLocationFix, MAX_GPS_ACCURACY_METRES } from "../utils/location";
 
 // Gorgeous double-sided dynamic Resident ID Card
 function DigitalIDCard({ user, session, flipped, onFlip }) {
@@ -271,27 +272,45 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
         throw new Error("Location permission is required to mark attendance.");
       }
 
-      await Location.enableNetworkProviderAsync().catch(() => null);
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced
+      const location = await getBestLocationFix(Location, {
+        onFix: (fix, { attempt, attempts }) => {
+          console.log("[GPS] fix", {
+            attempt,
+            attempts,
+            latitude: fix.latitude,
+            longitude: fix.longitude,
+            accuracyMetres: fix.accuracy
+          });
+          setGpsAccuracy(fix.accuracy);
+          setScreenMessage(
+            `GPS fix ${attempt}/${attempts}: ${Math.round(fix.accuracy)}m at ${fix.latitude.toFixed(6)}, ${fix.longitude.toFixed(6)}`
+          );
+        }
       });
+      const accuracy = location.accuracy;
 
-      setGpsAccuracy(location.coords.accuracy);
+      setGpsAccuracy(accuracy);
       setGpsLoading(false);
 
-      if ((location.coords.accuracy || 999) > 30) {
-        throw new Error(`Location accuracy (${Math.round(location.coords.accuracy)}m) too low. Step outside and re-try.`);
+      if (accuracy > MAX_GPS_ACCURACY_METRES) {
+        throw new Error(`Location accuracy (${Math.round(accuracy)}m) too low. Step outside and re-try.`);
       }
 
       setScreenMessage("Uploading biometrics & location payload...");
+      console.log("[Attendance] submitting coordinates", {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracyMetres: accuracy
+      });
       const formData = new FormData();
       formData.append("image", {
         uri,
         name: `attendance-${Date.now()}.jpg`,
         type: "image/jpeg"
       });
-      formData.append("latitude", String(location.coords.latitude));
-      formData.append("longitude", String(location.coords.longitude));
+      formData.append("latitude", String(location.latitude));
+      formData.append("longitude", String(location.longitude));
+      formData.append("accuracy_metres", String(accuracy));
       formData.append("idempotency_key", createIdempotencyKey());
 
       const response = await authorizedRequest("/attendance/submit", {
@@ -494,7 +513,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                 tone={getAttendanceTone(attendanceJob?.status || latestHistoryRecord?.status)}
               />
               <Text style={styles.sectionCopy}>
-                Requires location accuracy &lt; 30 metres. If attendance fails, contact your campus warden to submit an admin override.
+                Requires location accuracy &lt;= 30 metres. If attendance fails, contact your campus warden to submit an admin override.
               </Text>
             </SectionCard>
           </ScrollView>

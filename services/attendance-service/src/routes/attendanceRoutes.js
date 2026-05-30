@@ -17,6 +17,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
 });
+const MAX_GPS_ACCURACY_METRES = 30;
 
 async function removeObjectBestEffort(objectKey, context) {
   try {
@@ -50,6 +51,10 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
   try {
     const latitude = Number(req.body?.latitude);
     const longitude = Number(req.body?.longitude);
+    const accuracyMetres =
+      req.body?.accuracy_metres === undefined || req.body?.accuracy_metres === null
+        ? null
+        : Number(req.body.accuracy_metres);
     const idempotencyKey = req.body?.idempotency_key;
 
     if (!req.file || !Number.isFinite(latitude) || !Number.isFinite(longitude) || !idempotencyKey) {
@@ -72,6 +77,19 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
       });
     }
 
+    if (
+      accuracyMetres !== null &&
+      (!Number.isFinite(accuracyMetres) || accuracyMetres < 0 || accuracyMetres > MAX_GPS_ACCURACY_METRES)
+    ) {
+      return res.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: `accuracy_metres must be between 0 and ${MAX_GPS_ACCURACY_METRES}`,
+          retryable: false
+        }
+      });
+    }
+
     const imageObjectKey = await uploadTempObject({
       category: "verification",
       studentId: req.user.id,
@@ -88,6 +106,7 @@ router.post("/submit", upload.single("image"), async (req, res, next) => {
         hostelId: req.user.hostelId,
         latitude,
         longitude,
+        accuracyMetres,
         idempotencyKey
       });
     } catch (error) {

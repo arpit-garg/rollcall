@@ -1,4 +1,5 @@
 import io
+import re
 import sys
 import types
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import torch
 from fastapi import HTTPException
 from pydantic import ValidationError
 
@@ -98,6 +100,7 @@ sys.modules.setdefault("facenet_pytorch", facenet_module)
 
 
 from app.api import routes  # noqa: E402
+from app.core.fasnet_backbone import MiniFASNetV1SE, MiniFASNetV2  # noqa: E402
 from app.core import liveness, storage  # noqa: E402
 from app.schemas.ml import EnrollmentRequest, VerificationRequest  # noqa: E402
 
@@ -242,6 +245,58 @@ class LivenessSafetyTests(unittest.TestCase):
 
         self.assertEqual(0.8, score)
 
+    def test_predict_uses_real_face_probability_class(self) -> None:
+        class RealClassModel:
+            def __call__(self, tensor):
+                return torch.tensor([[0.0, 5.0, -5.0]], dtype=torch.float32)
+
+        anti_spoofing = object.__new__(liveness.AntiSpoofing)
+        anti_spoofing.models = [RealClassModel(), RealClassModel()]
+        anti_spoofing.scales = [1.0, 1.0]
+
+        score = anti_spoofing.predict(np.zeros((20, 20, 3), dtype=np.uint8), [1, 1, 10, 10])
+
+        self.assertGreater(score, 1.9)
+
+    def test_preprocess_matches_minifasnet_raw_bgr_input(self) -> None:
+        anti_spoofing = object.__new__(liveness.AntiSpoofing)
+        crop = np.zeros((2, 2, 3), dtype=np.uint8)
+        crop[:, :] = [10, 20, 30]
+
+        tensor = anti_spoofing._preprocess(crop).cpu()
+
+        self.assertEqual(10.0, tensor[0, 0, 0, 0].item())
+        self.assertEqual(20.0, tensor[0, 1, 0, 0].item())
+        self.assertEqual(30.0, tensor[0, 2, 0, 0].item())
+
+    def test_crop_keeps_requested_scale_near_image_edges(self) -> None:
+        anti_spoofing = object.__new__(liveness.AntiSpoofing)
+        image = np.zeros((100, 100, 3), dtype=np.uint8)
+        image[:, :, 0] = np.arange(100, dtype=np.uint8)
+
+        crop = anti_spoofing._crop_face(image, [0, 0, 20, 20], 2.7)
+
+        self.assertEqual((80, 80, 3), crop.shape)
+        self.assertGreaterEqual(int(crop[-1, -1, 0]), 50)
+
+
+class MiniFASNetBackboneTests(unittest.TestCase):
+    def test_backbone_uses_checkpoint_compatible_layer_names(self) -> None:
+        state_keys = set(MiniFASNetV2(conv6_kernel=(5, 5)).state_dict())
+
+        self.assertIn("conv2_dw.conv.weight", state_keys)
+        self.assertIn("conv_23.conv.conv.weight", state_keys)
+        self.assertIn("conv_3.model.0.conv.conv.weight", state_keys)
+        self.assertIn("conv_6_dw.conv.weight", state_keys)
+        self.assertIn("prob.weight", state_keys)
+
+    def test_v1se_backbone_uses_checkpoint_compatible_se_layers(self) -> None:
+        state_keys = set(MiniFASNetV1SE(conv6_kernel=(5, 5)).state_dict())
+
+        self.assertIn("conv_3.model.3.se_module.fc1.weight", state_keys)
+        self.assertIn("conv_4.model.5.se_module.bn2.running_mean", state_keys)
+        self.assertIn("conv_5.model.1.se_module.fc2.weight", state_keys)
+
 
 class StorageSafetyTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -272,6 +327,29 @@ class DockerSafetyTests(unittest.TestCase):
 
         self.assertIn("ADD --checksum=sha256:", dockerfile)
         self.assertNotIn("/raw/master/", dockerfile)
+
+    def test_dockerfile_uses_current_mini_fasnet_weight_checksums(self) -> None:
+        dockerfile = (REPO_ROOT / "services" / "ml-service" / "Dockerfile").read_text(encoding="utf-8")
+        pinned_downloads = {
+            url: checksum
+            for checksum, url in re.findall(
+                r"ADD --checksum=sha256:([0-9a-f]{64})\s+\\\s+(\S+)\s+\\",
+                dockerfile,
+            )
+        }
+
+        self.assertEqual(
+            "a5eb02e1843f19b5386b953cc4c9f011c3f985d0ee2bb9819eea9a142099bec0",
+            pinned_downloads[
+                "https://huggingface.co/spaces/aaavvvrrr/face-anti-spoofing/resolve/d9b3330bc1c961613bf3904bd6bac0ca0411310f/weights/2.7_80x80_MiniFASNetV2.pth"
+            ],
+        )
+        self.assertEqual(
+            "84ee1d37d96894d5e82de5a57df044ef80a58be2b218b5ed7cdfd875ec2f5990",
+            pinned_downloads[
+                "https://huggingface.co/spaces/aaavvvrrr/face-anti-spoofing/resolve/52d5df1a644e37e2fdc4b77b7e04bdc92bb973d5/weights/4_0_0_80x80_MiniFASNetV1SE.pth"
+            ],
+        )
 
 
 if __name__ == "__main__":

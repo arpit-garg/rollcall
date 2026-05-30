@@ -77,6 +77,7 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const hostelId = "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4";
 const otherHostelId = "a5a4bff2-179f-4eb1-8bf0-b8959d8a26bb";
 const studentId = "8f71928b-74d0-4dbb-b30a-1e5da85a20fd";
+const otherHostelStudentId = "63db7ce4-ea45-4a4f-823c-cb9ac7ef4d3b";
 const wardenId = "54c1feaf-7bb9-4cc7-ac54-f1ed08dcb22c";
 const otherHostelWardenId = "015ca63a-111a-4f2f-b1e3-2dac3ee22d4e";
 
@@ -101,6 +102,9 @@ const wardenAuthHeader = {
 const otherHostelWardenAuthHeader = {
   Authorization: `Bearer ${createToken(otherHostelWardenId, "warden", otherHostelId)}`
 };
+const otherHostelStudentAuthHeader = {
+  Authorization: `Bearer ${createToken(otherHostelStudentId, "student", otherHostelId)}`
+};
 
 async function jsonRequest(url, options = {}) {
   const response = await fetch(url, options);
@@ -111,14 +115,14 @@ async function jsonRequest(url, options = {}) {
   };
 }
 
-async function createWindowForTests() {
+async function createWindowForTests(authHeader = wardenAuthHeader) {
   const opensAt = new Date(Date.now() - 60_000).toISOString();
   const closesAt = new Date(Date.now() + 30 * 60_000).toISOString();
 
   const response = await jsonRequest(`${baseUrl}/api/v1/windows`, {
     method: "POST",
     headers: {
-      ...wardenAuthHeader,
+      ...authHeader,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -223,7 +227,27 @@ beforeEach(async () => {
       SET is_active = true
       WHERE id = ANY($1::uuid[])
     `,
-    [[studentId, wardenId, otherHostelWardenId]]
+    [[studentId, otherHostelStudentId, wardenId, otherHostelWardenId]]
+  );
+  await pool.query(
+    `
+      INSERT INTO users (id, name, email, password_hash, role, hostel_id, room_number, is_active)
+      VALUES (
+        $1,
+        'MBH-F Test Student',
+        'mbhf.student@college.edu',
+        '$2a$10$KOm/zgc.9aDfkSfgVJLhhuWWKJfy63F/fAAyYyiTDiy3oKdYJJyUW',
+        'student',
+        $2,
+        'F-108',
+        true
+      )
+      ON CONFLICT (email) DO UPDATE
+      SET hostel_id = EXCLUDED.hostel_id,
+          room_number = EXCLUDED.room_number,
+          is_active = EXCLUDED.is_active
+    `,
+    [otherHostelStudentId, otherHostelId]
   );
   await pool.query("DELETE FROM overrides");
   await pool.query("DELETE FROM audit_logs");
@@ -242,6 +266,20 @@ beforeEach(async () => {
           enrolled_at = now()
     `,
     [studentId]
+  );
+  await pool.query(
+    `
+      INSERT INTO face_templates (student_id, embedding_ref, model_version, is_valid)
+      VALUES ($1, 'seed://mbhf-template', 'demo-facenet-v1', true)
+      ON CONFLICT (student_id) DO UPDATE
+      SET embedding_ref = EXCLUDED.embedding_ref,
+          model_version = EXCLUDED.model_version,
+          is_valid = EXCLUDED.is_valid,
+          enrollment_attempt_id = NULL,
+          enrollment_status = 'idle',
+          enrolled_at = now()
+    `,
+    [otherHostelStudentId]
   );
 
   const existingObjects = await listObjectNames("");
@@ -348,6 +386,108 @@ test("student submit persists record and duplicate submit returns existing job i
     const tempObjects = await listObjectNames("temp/verification/");
     return tempObjects.length === 0;
   });
+});
+
+test("student submit accepts MBH-F campus coordinates inside the configured geofence", async () => {
+  await createWindowForTests(otherHostelWardenAuthHeader);
+
+  const form = new FormData();
+  form.append("image", new Blob(["demo-image"], { type: "image/jpeg" }), "capture.jpg");
+  form.append("latitude", "31.39464");
+  form.append("longitude", "75.53393");
+  form.append("idempotency_key", "12121212-1212-4212-8212-121212121212");
+
+  const response = await fetch(`${baseUrl}/api/v1/attendance/submit`, {
+    method: "POST",
+    headers: {
+      ...otherHostelStudentAuthHeader
+    },
+    body: form
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 202, JSON.stringify(body));
+  assert.equal(body.status, "pending");
+});
+
+test("student submit includes GPS accuracy tolerance in the geofence decision", async () => {
+  await createWindowForTests(otherHostelWardenAuthHeader);
+
+  const noAccuracyForm = new FormData();
+  noAccuracyForm.append("image", new Blob(["demo-image"], { type: "image/jpeg" }), "capture.jpg");
+  noAccuracyForm.append("latitude", "31.40652");
+  noAccuracyForm.append("longitude", "75.5366");
+  noAccuracyForm.append("idempotency_key", "14141414-1414-4414-8414-141414141414");
+
+  const noAccuracyResponse = await fetch(`${baseUrl}/api/v1/attendance/submit`, {
+    method: "POST",
+    headers: {
+      ...otherHostelStudentAuthHeader
+    },
+    body: noAccuracyForm
+  });
+  const noAccuracyBody = await noAccuracyResponse.json();
+
+  assert.equal(noAccuracyResponse.status, 422);
+  assert.equal(noAccuracyBody.error.code, "GEO_OUT_OF_RANGE");
+
+  const form = new FormData();
+  form.append("image", new Blob(["demo-image"], { type: "image/jpeg" }), "capture.jpg");
+  form.append("latitude", "31.40652");
+  form.append("longitude", "75.5366");
+  form.append("accuracy_metres", "30");
+  form.append("idempotency_key", "13131313-1313-4313-8313-131313131313");
+
+  const response = await fetch(`${baseUrl}/api/v1/attendance/submit`, {
+    method: "POST",
+    headers: {
+      ...otherHostelStudentAuthHeader
+    },
+    body: form
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 202, JSON.stringify(body));
+  assert.equal(body.status, "pending");
+
+  const { rows } = await pool.query(
+    `
+      SELECT metadata
+      FROM audit_logs
+      WHERE actor_id = $1
+        AND action = 'ATTENDANCE_SUBMITTED'
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [otherHostelStudentId]
+  );
+
+  assert.equal(rows[0].metadata.geofence.gpsAccuracyMetres, 30);
+  assert.equal(rows[0].metadata.geofence.hostelRadiusMetres, 750);
+  assert.equal(rows[0].metadata.geofence.effectiveRadiusMetres, 780);
+});
+
+test("student submit rejects GPS accuracy above the accepted mobile threshold", async () => {
+  await createWindowForTests(otherHostelWardenAuthHeader);
+
+  const form = new FormData();
+  form.append("image", new Blob(["demo-image"], { type: "image/jpeg" }), "capture.jpg");
+  form.append("latitude", "31.3996");
+  form.append("longitude", "75.5366");
+  form.append("accuracy_metres", "31");
+  form.append("idempotency_key", "15151515-1515-4515-8515-151515151515");
+
+  const response = await fetch(`${baseUrl}/api/v1/attendance/submit`, {
+    method: "POST",
+    headers: {
+      ...otherHostelStudentAuthHeader
+    },
+    body: form
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, "VALIDATION_ERROR");
 });
 
 test("history and job polling reflect resolved attendance records", async () => {

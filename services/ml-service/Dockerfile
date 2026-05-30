@@ -20,7 +20,7 @@ ADD --checksum=sha256:a5eb02e1843f19b5386b953cc4c9f011c3f985d0ee2bb9819eea9a1420
     https://huggingface.co/spaces/aaavvvrrr/face-anti-spoofing/resolve/d9b3330bc1c961613bf3904bd6bac0ca0411310f/weights/2.7_80x80_MiniFASNetV2.pth \
     /app/weights/MiniFASNetV2.pth
 ADD --checksum=sha256:84ee1d37d96894d5e82de5a57df044ef80a58be2b218b5ed7cdfd875ec2f5990 \
-    https://huggingface.co/spaces/aaavvvrrr/face-anti-spoofing/resolve/d9b3330bc1c961613bf3904bd6bac0ca0411310f/weights/4_0_0_80x80_MiniFASNetV1SE.pth \
+    https://huggingface.co/spaces/aaavvvrrr/face-anti-spoofing/resolve/52d5df1a644e37e2fdc4b77b7e04bdc92bb973d5/weights/4_0_0_80x80_MiniFASNetV1SE.pth \
     /app/weights/MiniFASNetV1SE.pth
 
 COPY app ./app

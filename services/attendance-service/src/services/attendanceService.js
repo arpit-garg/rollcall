@@ -18,11 +18,14 @@ import { haversineDistance } from "./geo.js";
 import { httpError } from "./httpError.js";
 import { getSubmissionJobId, rememberSubmissionJob } from "./idempotencyStore.js";
 
+const MAX_GPS_ACCURACY_TOLERANCE_METRES = 30;
+
 export async function createSubmission({
   studentId,
   hostelId,
   latitude,
   longitude,
+  accuracyMetres = null,
   idempotencyKey
 }) {
   const activeWindow = await findActiveWindow(hostelId);
@@ -44,9 +47,20 @@ export async function createSubmission({
   }
 
   const distance = haversineDistance(latitude, longitude, hostel.centerLat, hostel.centerLng);
+  const accuracyTolerance = getAccuracyTolerance(accuracyMetres);
+  const effectiveRadiusMetres = hostel.radiusMetres + accuracyTolerance;
 
-  if (distance > hostel.radiusMetres) {
-    throw httpError(422, "GEO_OUT_OF_RANGE", "You are not within hostel boundary");
+  if (distance > effectiveRadiusMetres) {
+    console.warn(
+      `[Attendance] Geofence rejected student ${studentId} for hostel ${hostel.name}: ` +
+        `distance=${Math.round(distance)}m radius=${hostel.radiusMetres}m ` +
+        `accuracy=${accuracyMetres ?? "unknown"}m tolerance=${accuracyTolerance}m`
+    );
+    throw httpError(
+      422,
+      "GEO_OUT_OF_RANGE",
+      `You are not within hostel boundary. Distance ${Math.round(distance)}m, allowed ${Math.round(effectiveRadiusMetres)}m.`
+    );
   }
 
   const existingJobId = await getSubmissionJobId(activeWindow.id, studentId, idempotencyKey);
@@ -115,7 +129,14 @@ export async function createSubmission({
   }
 
   await appendAuditLog(studentId, "ATTENDANCE_SUBMITTED", "attendance_records", record.id, {
-    windowId: activeWindow.id
+    windowId: activeWindow.id,
+    geofence: {
+      distanceMetres: Math.round(distance),
+      hostelRadiusMetres: hostel.radiusMetres,
+      gpsAccuracyMetres: accuracyMetres,
+      accuracyToleranceMetres: accuracyTolerance,
+      effectiveRadiusMetres: Math.round(effectiveRadiusMetres)
+    }
   });
 
   await rememberSubmissionJob(activeWindow.id, studentId, idempotencyKey, record.jobId);
@@ -125,6 +146,20 @@ export async function createSubmission({
     record,
     templateRef: template.embedding_ref
   };
+}
+
+function getAccuracyTolerance(accuracyMetres) {
+  if (accuracyMetres === null || accuracyMetres === undefined) {
+    return 0;
+  }
+
+  const numericAccuracy = Number(accuracyMetres);
+
+  if (!Number.isFinite(numericAccuracy) || numericAccuracy < 0) {
+    return 0;
+  }
+
+  return Math.min(numericAccuracy, MAX_GPS_ACCURACY_TOLERANCE_METRES);
 }
 
 export async function getJob(jobId, studentId) {

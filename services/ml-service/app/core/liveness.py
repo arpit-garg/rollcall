@@ -5,8 +5,8 @@ Uses two lightweight CNN models:
   - MiniFASNetV2 with crop scale 2.7
   - MiniFASNetV1SE with crop scale 4.0
 
-Each model outputs 3-class logits (real, print-attack, replay-attack).
-The real probabilities from loaded models are summed and normalized to
+Each model outputs 3-class logits where class index 1 is the real-face
+class. Real probabilities from loaded models are summed and normalized to
 0.0-1.0 for the API response. Missing required models fail closed.
 """
 
@@ -84,12 +84,30 @@ class AntiSpoofing:
         center_x = x + box_w / 2
         center_y = y + box_h / 2
 
-        x1 = max(0, int(center_x - new_w / 2))
-        y1 = max(0, int(center_y - new_h / 2))
-        x2 = min(src_w - 1, int(center_x + new_w / 2))
-        y2 = min(src_h - 1, int(center_y + new_h / 2))
+        x1 = center_x - new_w / 2
+        y1 = center_y - new_h / 2
+        x2 = center_x + new_w / 2
+        y2 = center_y + new_h / 2
 
-        crop = image[y1:y2, x1:x2]
+        if x1 < 0:
+            x2 -= x1
+            x1 = 0
+        if y1 < 0:
+            y2 -= y1
+            y1 = 0
+        if x2 > src_w - 1:
+            x1 -= x2 - src_w + 1
+            x2 = src_w - 1
+        if y2 > src_h - 1:
+            y1 -= y2 - src_h + 1
+            y2 = src_h - 1
+
+        x1 = max(0, int(x1))
+        y1 = max(0, int(y1))
+        x2 = min(src_w - 1, int(x2))
+        y2 = min(src_h - 1, int(y2))
+
+        crop = image[y1 : y2 + 1, x1 : x2 + 1]
 
         if crop.size == 0:
             crop = image[y : y + box_h, x : x + box_w]
@@ -97,9 +115,8 @@ class AntiSpoofing:
         return cv2.resize(crop, (80, 80), interpolation=cv2.INTER_LINEAR)
 
     def _preprocess(self, face_crop: np.ndarray) -> torch.Tensor:
-        """Convert an 80x80 BGR crop to a model-ready tensor."""
-        rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-        tensor = torch.from_numpy(rgb.transpose(2, 0, 1)).float() / 255.0
+        """Convert an 80x80 OpenCV BGR crop to the model's raw tensor format."""
+        tensor = torch.from_numpy(face_crop.transpose(2, 0, 1)).float()
         return tensor.unsqueeze(0).to(_device)
 
     def predict(self, image: np.ndarray, bbox: List[int]) -> float:
@@ -113,7 +130,7 @@ class AntiSpoofing:
             with torch.no_grad():
                 logits = model(tensor)
                 probs = F.softmax(logits, dim=1)
-                combined_score += probs[0, 0].item()
+                combined_score += probs[0, 1].item()
 
         return combined_score
 
