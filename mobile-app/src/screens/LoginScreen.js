@@ -94,20 +94,63 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
-      <ScrollView contentContainerStyle={styles.loginContainer}>
+      <ScrollView contentContainerStyle={styles.loginContainer} keyboardShouldPersistTaps="handled">
         <View style={styles.loginHero}>
-          <View style={styles.loginLogoContainer}>
-            <View style={styles.loginLogoPulse}>
-              <MaterialCommunityIcons name="shield-key-outline" size={32} color="#06B6D4" />
+          <View style={styles.loginBrandRow}>
+            <View style={styles.loginLogoContainer}>
+              <View style={styles.loginLogoPulse}>
+                <MaterialCommunityIcons name="shield-key-outline" size={28} color="#38BDF8" />
+              </View>
+            </View>
+            <View style={styles.loginBrandText}>
+              <Text style={styles.loginEyebrow}>NITJ RESIDENT ACCESS</Text>
+              <Text style={styles.loginHeading}>Hostel Attendance</Text>
             </View>
           </View>
-          <Text style={styles.loginEyebrow}>SECURE RESIDENT ACCESS</Text>
-          <Text style={styles.loginHeading}>Hostel Verification Portal</Text>
           <Text style={styles.loginCopy}>
             {isSignUp
-              ? "Create a new student profile to synchronize biometric models with your hostel parameters."
-              : "Authenticate below to synchronize with your college server, register biometric credentials, and log secure attendance."}
+              ? "Create your student profile with your NITJ email."
+              : "Sign in to mark attendance and manage your resident pass."}
           </Text>
+          <View style={styles.loginSignalRow}>
+            <View style={styles.loginSignalPill}>
+              <Ionicons name="shield-checkmark-outline" size={14} color="#7dd3fc" />
+              <Text style={styles.loginSignalText}>Secure</Text>
+            </View>
+            <View style={styles.loginSignalPill}>
+              <Ionicons name="location-outline" size={14} color="#7dd3fc" />
+              <Text style={styles.loginSignalText}>Location Aware</Text>
+            </View>
+            <View style={styles.loginSignalPill}>
+              <Ionicons name="sparkles-outline" size={14} color="#7dd3fc" />
+              <Text style={styles.loginSignalText}>Modern</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.modeSwitch}>
+          <Pressable
+            onPress={() => {
+              setIsSignUp(false);
+              setErrorMessage("");
+            }}
+            style={[styles.modeSwitchButton, !isSignUp ? styles.modeSwitchButtonActive : null]}
+          >
+            <Text style={[styles.modeSwitchText, !isSignUp ? styles.modeSwitchTextActive : null]}>
+              Sign In
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              setIsSignUp(true);
+              setErrorMessage("");
+            }}
+            style={[styles.modeSwitchButton, isSignUp ? styles.modeSwitchButtonActive : null]}
+          >
+            <Text style={[styles.modeSwitchText, isSignUp ? styles.modeSwitchTextActive : null]}>
+              Sign Up
+            </Text>
+          </Pressable>
         </View>
 
         {!isSignUp ? (
@@ -143,7 +186,7 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               onFocus={() => setFocusedField("password")}
               onBlur={() => setFocusedField("")}
-              placeholder="••••••••••••"
+              placeholder="Password"
               placeholderTextColor="#475569"
             />
 
@@ -164,9 +207,9 @@ export default function LoginScreen() {
               
               <Pressable
                 onPress={() => setIsSignUp(true)}
-                style={{ marginTop: 16, alignItems: "center" }}
+                style={styles.linkButton}
               >
-                <Text style={{ color: "#06B6D4", fontSize: 13, fontWeight: "600" }}>
+                <Text style={styles.linkButtonText}>
                   Don't have an account? Sign Up
                 </Text>
               </Pressable>
@@ -221,7 +264,7 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               onFocus={() => setFocusedField("password")}
               onBlur={() => setFocusedField("")}
-              placeholder="••••••••••••"
+              placeholder="Password"
               placeholderTextColor="#475569"
             />
 
@@ -229,23 +272,20 @@ export default function LoginScreen() {
             {hostels.length === 0 ? (
               <ActivityIndicator size="small" color="#06B6D4" style={{ marginVertical: 8 }} />
             ) : (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: 4 }}>
+              <View style={styles.hostelChipRow}>
                 {hostels.map((hostel) => {
                   const isSelected = hostel.id === selectedHostelId;
                   return (
                     <Pressable
                       key={hostel.id}
                       onPress={() => setSelectedHostelId(hostel.id)}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 10,
-                        backgroundColor: isSelected ? "rgba(6, 182, 212, 0.08)" : "rgba(255, 255, 255, 0.02)",
-                        borderWidth: 1,
-                        borderColor: isSelected ? "#06B6D4" : "rgba(255, 255, 255, 0.08)"
-                      }}
+                      style={({ pressed }) => [
+                        styles.hostelChip,
+                        isSelected ? styles.hostelChipActive : null,
+                        pressed ? styles.hostelChipPressed : null
+                      ]}
                     >
-                      <Text style={{ color: isSelected ? "#22d3ee" : "#94a3b8", fontSize: 12, fontWeight: "600" }}>
+                      <Text style={[styles.hostelChipText, isSelected ? styles.hostelChipTextActive : null]}>
                         {hostel.name}
                       </Text>
                     </Pressable>
@@ -290,9 +330,9 @@ export default function LoginScreen() {
               
               <Pressable
                 onPress={() => setIsSignUp(false)}
-                style={{ marginTop: 16, alignItems: "center" }}
+                style={styles.linkButton}
               >
-                <Text style={{ color: "#06B6D4", fontSize: 13, fontWeight: "600" }}>
+                <Text style={styles.linkButtonText}>
                   Already have an account? Sign In
                 </Text>
               </Pressable>

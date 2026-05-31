@@ -45,3 +45,12 @@ test("includes scores in success message when available", () => {
     "Attendance verified successfully. Face match 98%, liveness 99%."
   );
 });
+
+test("uses clear processing copy while verification is pending", () => {
+  assert.equal(
+    getVerificationResultMessage({
+      status: "pending"
+    }),
+    "Attendance verification is processing. We will update this screen when it finishes."
+  );
+});

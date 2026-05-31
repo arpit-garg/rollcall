@@ -44,7 +44,7 @@ export default function CaptureModal({ visible, mode, cameraRef, onClose, onCapt
       <SafeAreaView style={styles.modalRoot}>
         <View style={styles.modalHeader}>
           <View>
-            <Text style={styles.modalEyebrow}>SECURE HUDBIOMETRIC</Text>
+            <Text style={styles.modalEyebrow}>BIOMETRIC CHECK</Text>
             <Text style={styles.modalTitle}>{title}</Text>
           </View>
           <ActionButton 
@@ -68,17 +68,17 @@ export default function CaptureModal({ visible, mode, cameraRef, onClose, onCapt
           </View>
           <View style={styles.scannerStatusContainer}>
             <Text style={styles.scannerStatusText}>
-              {isBusy ? "UPLOADING BIOMETRICS..." : "ALIGN FACE INSIDE HUDBOX"}
+              {isBusy ? "UPLOADING CHECK..." : "ALIGN FACE INSIDE FRAME"}
             </Text>
           </View>
         </View>
 
         <Text style={styles.modalHint}>
-          Hold device steady in proper lighting. Biometric embeddings are synthesized directly into secure local hashes.
+          Hold the device steady in good lighting until your face is centered.
         </Text>
 
         <ActionButton
-          label={isBusy ? "VERIFYING MATRIX..." : "CAPTURE EMBEDDING"}
+          label={isBusy ? "VERIFYING..." : "CAPTURE FACE"}
           onPress={onCapture}
           disabled={isBusy}
           icon={isBusy ? <ActivityIndicator size="small" color="#081f29" /> : <Ionicons name="scan-outline" size={18} color="#081f29" />}

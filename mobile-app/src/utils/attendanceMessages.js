@@ -46,7 +46,7 @@ function getVerificationResultMessage(result) {
       : "Attendance verification failed before scoring. Re-enroll your face and try again.";
   }
 
-  return "Biometrics processing. Waiting for matrix confirmation...";
+  return "Attendance verification is processing. We will update this screen when it finishes.";
 }
 
 module.exports = {

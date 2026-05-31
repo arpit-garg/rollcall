@@ -1,71 +1,141 @@
 import { StyleSheet, Platform } from "react-native";
+import { getSurfaceShadowStyle, palette } from "./utils/uiTheme";
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#060B0E"
+    backgroundColor: palette.background
+  },
+  screenBackdrop: {
+    flex: 1,
+    backgroundColor: palette.background
   },
   appShellRoot: {
     flex: 1,
     justifyContent: "space-between"
   },
   container: {
-    padding: 16,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 22,
     gap: 16
   },
   loginContainer: {
+    flexGrow: 1,
+    justifyContent: "center",
     paddingHorizontal: 20,
-    paddingVertical: 32,
-    gap: 20
+    paddingVertical: 28,
+    gap: 18
   },
   loginHero: {
+    backgroundColor: "rgba(16, 27, 34, 0.82)",
+    borderColor: palette.border,
+    borderWidth: 1,
+    borderRadius: 28,
+    padding: 22,
+    gap: 14,
+    overflow: "hidden",
+    ...getSurfaceShadowStyle("raised", Platform.OS)
+  },
+  loginBrandRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
-    gap: 8
+    gap: 12
+  },
+  loginBrandText: {
+    flex: 1
   },
   loginLogoContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(6, 182, 212, 0.08)",
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: "rgba(56, 189, 248, 0.12)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.2)",
+    borderColor: "rgba(56, 189, 248, 0.28)",
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8
+    justifyContent: "center"
   },
   loginLogoPulse: {
     alignItems: "center",
     justifyContent: "center"
   },
   loginEyebrow: {
-    color: "#06B6D4",
+    color: palette.accent,
     fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 2,
-    textAlign: "center"
+    letterSpacing: 1.4,
+    textTransform: "uppercase"
   },
   loginHeading: {
-    color: "#f8fafc",
-    fontSize: 26,
+    color: palette.text,
+    fontSize: 28,
     fontWeight: "800",
-    letterSpacing: -0.5,
-    textAlign: "center"
+    letterSpacing: 0
   },
   loginCopy: {
-    color: "#94a3b8",
+    color: palette.textMuted,
     fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-    paddingHorizontal: 12
+    lineHeight: 20
+  },
+  loginSignalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  loginSignalPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.18)",
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
+    paddingHorizontal: 10,
+    paddingVertical: 7
+  },
+  loginSignalText: {
+    color: "#bae6fd",
+    fontSize: 11,
+    fontWeight: "700"
+  },
+  modeSwitch: {
+    flexDirection: "row",
+    borderRadius: 16,
+    backgroundColor: "rgba(3, 7, 18, 0.32)",
+    borderWidth: 1,
+    borderColor: palette.border,
+    padding: 4
+  },
+  modeSwitchButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  modeSwitchButtonActive: {
+    backgroundColor: "rgba(56, 189, 248, 0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.28)"
+  },
+  modeSwitchText: {
+    color: palette.textSubtle,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase"
+  },
+  modeSwitchTextActive: {
+    color: "#e0f2fe"
   },
   hero: {
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
-    borderRadius: 20,
+    backgroundColor: "rgba(16, 27, 34, 0.88)",
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: palette.border,
     padding: 20,
-    gap: 12
+    gap: 14,
+    ...getSurfaceShadowStyle("raised", Platform.OS)
   },
   heroHeader: {
     flexDirection: "row",
@@ -73,20 +143,21 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   eyebrow: {
-    color: "#06B6D4",
-    fontSize: 9,
+    color: palette.accent,
+    fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 2
+    letterSpacing: 1.4,
+    textTransform: "uppercase"
   },
   heading: {
-    color: "#f8fafc",
-    fontSize: 24,
+    color: palette.text,
+    fontSize: 26,
     fontWeight: "800",
-    letterSpacing: -0.5,
+    letterSpacing: 0,
     marginTop: 2
   },
   copy: {
-    color: "#94a3b8",
+    color: palette.textMuted,
     fontSize: 13,
     lineHeight: 18
   },
@@ -98,30 +169,31 @@ const styles = StyleSheet.create({
   refreshBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(6, 182, 212, 0.08)",
+    backgroundColor: "rgba(56, 189, 248, 0.1)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.2)",
-    borderRadius: 12,
+    borderColor: "rgba(56, 189, 248, 0.24)",
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
     gap: 6
   },
   refreshBadgeText: {
-    color: "#22d3ee",
+    color: "#bae6fd",
     fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 1
+    letterSpacing: 0.6
   },
   refreshSpinning: {
     transform: [{ rotate: "45deg" }]
   },
   sectionCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
-    borderRadius: 20,
+    backgroundColor: "rgba(16, 27, 34, 0.86)",
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: palette.border,
     padding: 16,
-    gap: 12
+    gap: 14,
+    ...getSurfaceShadowStyle("soft", Platform.OS)
   },
   sectionHeader: {
     flexDirection: "row",
@@ -136,10 +208,12 @@ const styles = StyleSheet.create({
     gap: 10
   },
   sectionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(6, 182, 212, 0.05)",
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    backgroundColor: "rgba(56, 189, 248, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.18)",
     alignItems: "center",
     justifyContent: "center"
   },
@@ -147,13 +221,13 @@ const styles = StyleSheet.create({
     flex: 1
   },
   sectionTitle: {
-    color: "#f8fafc",
+    color: palette.text,
     fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: -0.2
+    fontWeight: "800",
+    letterSpacing: 0
   },
   sectionSubtitle: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 12,
     lineHeight: 16,
     marginTop: 1
@@ -164,18 +238,22 @@ const styles = StyleSheet.create({
   sectionBody: {
     gap: 8
   },
+  spacerSmall: {
+    height: 8
+  },
   sectionCopy: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 12,
     lineHeight: 16
   },
   actionButton: {
-    borderRadius: 12,
+    borderRadius: 15,
     paddingHorizontal: 16,
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
-    height: 44
+    minHeight: 46,
+    ...getSurfaceShadowStyle("soft", Platform.OS)
   },
   actionButtonContent: {
     flexDirection: "row",
@@ -188,24 +266,24 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   primaryButton: {
-    backgroundColor: "#06B6D4"
+    backgroundColor: palette.accent
   },
   secondaryButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    backgroundColor: "rgba(226, 232, 240, 0.06)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)"
+    borderColor: palette.border
   },
   primaryButtonText: {
-    color: "#081f29",
+    color: palette.ink,
     fontWeight: "800",
     fontSize: 12,
-    letterSpacing: 1
+    letterSpacing: 0.8
   },
   secondaryButtonText: {
-    color: "#cbd5e1",
+    color: "#e2e8f0",
     fontWeight: "700",
     fontSize: 12,
-    letterSpacing: 1
+    letterSpacing: 0.8
   },
   actionButtonText: {
     textAlign: "center"
@@ -220,12 +298,13 @@ const styles = StyleSheet.create({
   messageBanner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(6, 182, 212, 0.08)",
+    backgroundColor: "rgba(56, 189, 248, 0.1)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.15)",
-    borderRadius: 16,
+    borderColor: "rgba(56, 189, 248, 0.2)",
+    borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 12
+    paddingVertical: 12,
+    ...getSurfaceShadowStyle("soft", Platform.OS)
   },
   shellMessageBanner: {
     marginHorizontal: 16,
@@ -250,24 +329,24 @@ const styles = StyleSheet.create({
     borderColor: "rgba(239, 68, 68, 0.2)"
   },
   fieldLabel: {
-    color: "#94a3b8",
+    color: "#cbd5e1",
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontWeight: "800",
+    letterSpacing: 0.7,
     textTransform: "uppercase",
     marginBottom: 6,
     marginTop: 6
   },
   input: {
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: palette.border,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "rgba(0, 0, 0, 0.2)",
-    color: "#f8fafc",
+    borderRadius: 16,
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+    backgroundColor: "rgba(3, 7, 18, 0.32)",
+    color: palette.text,
     fontSize: 14,
-    height: 46
+    minHeight: 48
   },
   multilineInput: {
     minHeight: 110,
@@ -276,11 +355,11 @@ const styles = StyleSheet.create({
     paddingBottom: 12
   },
   inputFocused: {
-    borderColor: "#06B6D4",
-    backgroundColor: "rgba(6, 182, 212, 0.02)"
+    borderColor: "rgba(56, 189, 248, 0.62)",
+    backgroundColor: "rgba(56, 189, 248, 0.06)"
   },
   inputHint: {
-    color: "#475569",
+    color: palette.textSubtle,
     fontSize: 11,
     lineHeight: 16,
     marginTop: 4,
@@ -289,39 +368,81 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(239, 68, 68, 0.08)",
-    borderColor: "rgba(239, 68, 68, 0.15)",
+    backgroundColor: "rgba(251, 113, 133, 0.1)",
+    borderColor: "rgba(251, 113, 133, 0.24)",
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginTop: 8
   },
   errorText: {
-    color: "#f87171",
+    color: "#fecdd3",
     fontSize: 12,
     lineHeight: 16,
     flex: 1
   },
   loginActionContainer: {
+    gap: 12,
     marginTop: 12
+  },
+  linkButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 38,
+    borderRadius: 12
+  },
+  linkButtonText: {
+    color: "#7dd3fc",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  hostelChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginVertical: 4
+  },
+  hostelChip: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "rgba(226, 232, 240, 0.05)",
+    borderWidth: 1,
+    borderColor: palette.border
+  },
+  hostelChipActive: {
+    backgroundColor: "rgba(56, 189, 248, 0.13)",
+    borderColor: "rgba(56, 189, 248, 0.46)"
+  },
+  hostelChipPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }]
+  },
+  hostelChipText: {
+    color: palette.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  hostelChipTextActive: {
+    color: "#e0f2fe"
   },
   loaderState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    backgroundColor: "#060B0E"
+    backgroundColor: palette.background
   },
   loaderText: {
-    color: "#06B6D4",
+    color: palette.accent,
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 2
   },
   modalRoot: {
     flex: 1,
-    backgroundColor: "#060B0E",
+    backgroundColor: palette.background,
     padding: 16,
     gap: 16
   },
@@ -332,25 +453,26 @@ const styles = StyleSheet.create({
     gap: 12
   },
   modalEyebrow: {
-    color: "#06B6D4",
+    color: palette.accent,
     fontSize: 9,
     fontWeight: "700",
-    letterSpacing: 2
+    letterSpacing: 1.4
   },
   modalTitle: {
-    color: "#f8fafc",
+    color: palette.text,
     fontSize: 18,
     fontWeight: "800",
-    letterSpacing: -0.2,
+    letterSpacing: 0,
     marginTop: 2
   },
   cameraFrame: {
     flex: 1,
-    borderRadius: 24,
+    borderRadius: 26,
     overflow: "hidden",
     position: "relative",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)"
+    borderColor: palette.borderStrong,
+    ...getSurfaceShadowStyle("raised", Platform.OS)
   },
   camera: {
     flex: 1
@@ -365,45 +487,45 @@ const styles = StyleSheet.create({
     height: 240,
     borderWidth: 1.5,
     borderStyle: "dashed",
-    borderColor: "rgba(6, 182, 212, 0.5)",
+    borderColor: "rgba(56, 189, 248, 0.62)",
     borderRadius: 120,
-    backgroundColor: "rgba(6, 182, 212, 0.03)"
+    backgroundColor: "rgba(56, 189, 248, 0.04)"
   },
   laserLine: {
     position: "absolute",
     left: "15%",
     right: "15%",
     height: 2,
-    backgroundColor: "#22D3EE",
-    shadowColor: "#06B6D4",
+    backgroundColor: palette.accent,
+    shadowColor: palette.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 6
   },
-  cornerTL: { position: "absolute", top: 30, left: 30, width: 20, height: 20, borderTopWidth: 2, borderLeftWidth: 2, borderColor: "#06B6D4" },
-  cornerTR: { position: "absolute", top: 30, right: 30, width: 20, height: 20, borderTopWidth: 2, borderRightWidth: 2, borderColor: "#06B6D4" },
-  cornerBL: { position: "absolute", bottom: 30, left: 30, width: 20, height: 20, borderBottomWidth: 2, borderLeftWidth: 2, borderColor: "#06B6D4" },
-  cornerBR: { position: "absolute", bottom: 30, right: 30, width: 20, height: 20, borderBottomWidth: 2, borderRightWidth: 2, borderColor: "#06B6D4" },
+  cornerTL: { position: "absolute", top: 30, left: 30, width: 20, height: 20, borderTopWidth: 2, borderLeftWidth: 2, borderColor: palette.accent },
+  cornerTR: { position: "absolute", top: 30, right: 30, width: 20, height: 20, borderTopWidth: 2, borderRightWidth: 2, borderColor: palette.accent },
+  cornerBL: { position: "absolute", bottom: 30, left: 30, width: 20, height: 20, borderBottomWidth: 2, borderLeftWidth: 2, borderColor: palette.accent },
+  cornerBR: { position: "absolute", bottom: 30, right: 30, width: 20, height: 20, borderBottomWidth: 2, borderRightWidth: 2, borderColor: palette.accent },
   scannerStatusContainer: {
     position: "absolute",
     bottom: 20,
     left: 20,
     right: 20,
-    backgroundColor: "rgba(6, 11, 14, 0.85)",
+    backgroundColor: "rgba(7, 16, 20, 0.88)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.2)",
-    borderRadius: 10,
+    borderColor: "rgba(56, 189, 248, 0.24)",
+    borderRadius: 14,
     paddingVertical: 8,
     alignItems: "center"
   },
   scannerStatusText: {
-    color: "#22d3ee",
+    color: "#bae6fd",
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 2
   },
   modalHint: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 12,
     lineHeight: 16,
     textAlign: "center"
@@ -412,24 +534,25 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.01)",
+    backgroundColor: "rgba(226, 232, 240, 0.04)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.03)",
-    borderRadius: 20
+    borderColor: palette.border,
+    borderRadius: 22
   },
   emptyHistory: {
-    color: "#475569",
+    color: palette.textSubtle,
     fontSize: 12,
     textAlign: "center",
     paddingHorizontal: 24
   },
   historyItem: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
-    backgroundColor: "rgba(255, 255, 255, 0.015)",
+    borderColor: palette.border,
+    backgroundColor: "rgba(16, 27, 34, 0.78)",
     padding: 14,
-    gap: 12
+    gap: 12,
+    ...getSurfaceShadowStyle("soft", Platform.OS)
   },
   historyTopRow: {
     flexDirection: "row",
@@ -446,43 +569,43 @@ const styles = StyleSheet.create({
     letterSpacing: 1
   },
   historyDate: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 11
   },
   historyMetricsGrid: {
     flexDirection: "row",
     borderTopWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: palette.border,
     paddingTop: 10,
     gap: 8
   },
   historyMetric: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.15)",
-    borderRadius: 8,
+    backgroundColor: "rgba(3, 7, 18, 0.26)",
+    borderRadius: 12,
     padding: 8,
     gap: 2
   },
   historyMetricLabel: {
-    color: "#475569",
+    color: palette.textSubtle,
     fontSize: 8,
     fontWeight: "700",
     letterSpacing: 0.5
   },
   historyMetricVal: {
-    color: "#cbd5e1",
+    color: "#e2e8f0",
     fontSize: 11,
     fontWeight: "700",
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace"
   },
   tabBar: {
-    height: 56,
+    height: 66,
     flexDirection: "row",
-    backgroundColor: "rgba(6, 11, 14, 0.95)",
+    backgroundColor: "rgba(7, 16, 20, 0.98)",
     borderTopWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.06)",
-    paddingBottom: Platform.OS === "ios" ? 12 : 4,
-    paddingTop: 4
+    borderColor: palette.border,
+    paddingBottom: Platform.OS === "ios" ? 14 : 6,
+    paddingTop: 6
   },
   tabItem: {
     flex: 1,
@@ -492,26 +615,26 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 9,
-    fontWeight: "600",
-    letterSpacing: 1,
-    color: "#64748b"
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    color: palette.textSubtle
   },
   tabLabelActive: {
-    color: "#06B6D4",
-    fontWeight: "700"
+    color: "#7dd3fc",
+    fontWeight: "800"
   },
   historyHeaderSection: {
     marginBottom: 4,
     gap: 4
   },
   historySectionTitle: {
-    color: "#f8fafc",
-    fontSize: 20,
+    color: palette.text,
+    fontSize: 22,
     fontWeight: "800",
-    letterSpacing: -0.2
+    letterSpacing: 0
   },
   historySectionSubtitle: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 12,
     lineHeight: 16
   },
@@ -523,23 +646,23 @@ const styles = StyleSheet.create({
   filterChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderRadius: 999,
+    backgroundColor: "rgba(226, 232, 240, 0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)"
+    borderColor: palette.border
   },
   filterChipActive: {
-    backgroundColor: "rgba(6, 182, 212, 0.08)",
-    borderColor: "rgba(6, 182, 212, 0.25)"
+    backgroundColor: "rgba(56, 189, 248, 0.13)",
+    borderColor: "rgba(56, 189, 248, 0.42)"
   },
   filterChipText: {
-    color: "#64748b",
+    color: palette.textSubtle,
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.5
   },
   filterChipTextActive: {
-    color: "#22d3ee"
+    color: "#e0f2fe"
   },
   historyListContainer: {
     gap: 10
@@ -560,12 +683,13 @@ const styles = StyleSheet.create({
     gap: 10
   },
   leaveRequestCard: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.04)",
-    backgroundColor: "rgba(255, 255, 255, 0.015)",
+    borderColor: palette.border,
+    backgroundColor: "rgba(16, 27, 34, 0.78)",
     padding: 14,
-    gap: 12
+    gap: 12,
+    ...getSurfaceShadowStyle("soft", Platform.OS)
   },
   leaveRequestHeader: {
     flexDirection: "row",
@@ -578,13 +702,13 @@ const styles = StyleSheet.create({
     gap: 4
   },
   leaveRequestRange: {
-    color: "#f8fafc",
+    color: palette.text,
     fontSize: 15,
     fontWeight: "700",
-    letterSpacing: -0.2
+    letterSpacing: 0
   },
   leaveRequestTimestamp: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 11
   },
   leaveStatusBadge: {
@@ -594,7 +718,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.03)"
+    backgroundColor: "rgba(226, 232, 240, 0.06)"
   },
   leaveStatusBadgeText: {
     fontSize: 10,
@@ -605,45 +729,45 @@ const styles = StyleSheet.create({
     gap: 8
   },
   leaveDetailCard: {
-    backgroundColor: "rgba(0, 0, 0, 0.15)",
+    backgroundColor: "rgba(3, 7, 18, 0.28)",
     borderRadius: 12,
     padding: 10,
     gap: 4
   },
   leaveDetailLabel: {
-    color: "#64748b",
+    color: palette.textSubtle,
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase"
   },
   leaveDetailValue: {
-    color: "#cbd5e1",
+    color: "#e2e8f0",
     fontSize: 13,
     lineHeight: 18
   },
   leaveParentNoteBox: {
-    backgroundColor: "rgba(6, 182, 212, 0.05)",
+    backgroundColor: "rgba(56, 189, 248, 0.08)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.12)",
+    borderColor: "rgba(56, 189, 248, 0.18)",
     padding: 10,
     gap: 4
   },
   leaveParentNoteLabel: {
-    color: "#22d3ee",
+    color: "#7dd3fc",
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase"
   },
   leaveParentNoteValue: {
-    color: "#cbd5e1",
+    color: "#e2e8f0",
     fontSize: 13,
     lineHeight: 18
   },
   leaveDecisionStamp: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 11
   },
   idCardTabContainer: {
@@ -657,46 +781,44 @@ const styles = StyleSheet.create({
   idCardContainer: {
     width: "100%",
     aspectRatio: 1.58,
-    borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderRadius: 26,
+    backgroundColor: "rgba(16, 27, 34, 0.92)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.2)",
+    borderColor: "rgba(56, 189, 248, 0.28)",
     padding: 16,
     justifyContent: "space-between",
     position: "relative",
-    overflow: "hidden"
+    overflow: "hidden",
+    ...getSurfaceShadowStyle("raised", Platform.OS)
   },
   idCardContainerBack: {
     width: "100%",
     aspectRatio: 1.58,
-    borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderRadius: 26,
+    backgroundColor: "rgba(16, 27, 34, 0.92)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.15)",
+    borderColor: "rgba(56, 189, 248, 0.22)",
     padding: 16,
     justifyContent: "space-between",
     position: "relative",
-    overflow: "hidden"
+    overflow: "hidden",
+    ...getSurfaceShadowStyle("raised", Platform.OS)
   },
   idCardGlow: {
     position: "absolute",
-    top: -50,
-    right: -50,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(6, 182, 212, 0.12)",
-    filter: "blur(20px)"
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: "rgba(56, 189, 248, 0.72)"
   },
   idCardGlowBack: {
     position: "absolute",
-    top: -50,
-    left: -50,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(6, 182, 212, 0.08)",
-    filter: "blur(20px)"
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: "rgba(52, 211, 153, 0.64)"
   },
   idCardHeader: {
     flexDirection: "row",
@@ -709,7 +831,7 @@ const styles = StyleSheet.create({
     gap: 6
   },
   idCardTitle: {
-    color: "#cbd5e1",
+    color: "#e2e8f0",
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.5
@@ -720,7 +842,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(16, 185, 129, 0.08)",
     borderColor: "rgba(16, 185, 129, 0.2)",
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 999,
     paddingHorizontal: 6,
     paddingVertical: 2,
     gap: 4
@@ -778,13 +900,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5
   },
   idCardName: {
-    color: "#f8fafc",
+    color: palette.text,
     fontSize: 14,
     fontWeight: "800",
-    letterSpacing: -0.2
+    letterSpacing: 0
   },
   idCardUid: {
-    color: "#22d3ee",
+    color: "#7dd3fc",
     fontSize: 8,
     fontWeight: "700",
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
@@ -794,8 +916,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: 2
   },
+  idCardInfoColumn: {
+    flex: 1
+  },
   idCardVal: {
-    color: "#94a3b8",
+    color: palette.textMuted,
     fontSize: 9,
     fontWeight: "600"
   },
@@ -809,13 +934,13 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   idCardTapPrompt: {
-    color: "#475569",
+    color: palette.textSubtle,
     fontSize: 8,
     fontWeight: "600",
     letterSpacing: 0.5
   },
   backCardTitle: {
-    color: "#cbd5e1",
+    color: "#e2e8f0",
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1
@@ -824,24 +949,24 @@ const styles = StyleSheet.create({
     gap: 2
   },
   backCardLabel: {
-    color: "#475569",
+    color: palette.textSubtle,
     fontSize: 8,
     fontWeight: "700"
   },
   backCardVal: {
-    color: "#94a3b8",
+    color: palette.textMuted,
     fontSize: 10,
     fontWeight: "600"
   },
   backCardWarningBox: {
-    backgroundColor: "rgba(6, 182, 212, 0.03)",
+    backgroundColor: "rgba(56, 189, 248, 0.07)",
     borderWidth: 1,
-    borderColor: "rgba(6, 182, 212, 0.1)",
-    borderRadius: 8,
+    borderColor: "rgba(56, 189, 248, 0.14)",
+    borderRadius: 12,
     padding: 8
   },
   backCardWarningText: {
-    color: "#64748b",
+    color: palette.textMuted,
     fontSize: 8,
     lineHeight: 11
   }

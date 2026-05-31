@@ -37,7 +37,6 @@ import {
   getLeaveRequestValidationMessage
 } from "../utils/studentPortal";
 
-// Gorgeous double-sided dynamic Resident ID Card
 function DigitalIDCard({ user, session, flipped, onFlip }) {
   return (
     <Pressable onPress={onFlip} style={styles.idCardOuter}>
@@ -72,11 +71,11 @@ function DigitalIDCard({ user, session, flipped, onFlip }) {
               <Text selectable style={styles.idCardUid}>{user.id.toUpperCase()}</Text>
 
               <View style={styles.idCardRow}>
-                <View style={{ flex: 1 }}>
+                <View style={styles.idCardInfoColumn}>
                   <Text style={styles.idCardLabel}>ROLE</Text>
                   <Text style={styles.idCardVal}>{user.role.toUpperCase()}</Text>
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={styles.idCardInfoColumn}>
                   <Text style={styles.idCardLabel}>HOSTEL</Text>
                   <Text style={styles.idCardVal}>CAMPUS BLOCK A</Text>
                 </View>
@@ -96,7 +95,7 @@ function DigitalIDCard({ user, session, flipped, onFlip }) {
       ) : (
         <View style={styles.idCardContainerBack}>
           <View style={styles.idCardGlowBack} />
-          <Text style={styles.backCardTitle}>SYSTEM COMPLIANCE DETAILS</Text>
+          <Text style={styles.backCardTitle}>CAMPUS ACCESS DETAILS</Text>
           
           <View style={styles.backCardMetaItem}>
             <Text style={styles.backCardLabel}>EMERGENCY CONTACTS</Text>
@@ -107,7 +106,7 @@ function DigitalIDCard({ user, session, flipped, onFlip }) {
           <View style={styles.backCardWarningBox}>
             <Ionicons name="shield-checkmark-outline" size={16} color="#06B6D4" style={{ marginBottom: 4 }} />
             <Text style={styles.backCardWarningText}>
-              This digital pass uses dynamic biometric validation. GPS coordinate matching and face telemetry checks are logged per window.
+              This pass is linked to your active student account and attendance verification history.
             </Text>
           </View>
 
@@ -348,7 +347,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
       status: "processing",
       updatedAt: new Date().toISOString()
     });
-    setScreenMessage("Enrollment submitted. Synthesizing secure face templates...");
+    setScreenMessage("Face registration submitted. We will update the status shortly.");
   }
 
   async function submitAttendance(uri) {
@@ -387,7 +386,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
         throw new Error(`Location accuracy (${Math.round(accuracy)}m) too low. Step outside and re-try.`);
       }
 
-      setScreenMessage("Uploading biometrics & location payload...");
+      setScreenMessage("Uploading face and location check...");
       console.log("[Attendance] submitting coordinates", {
         latitude: location.latitude,
         longitude: location.longitude,
@@ -410,7 +409,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
       });
 
       setAttendanceJob(response);
-      setScreenMessage("Biometrics processing. Waiting for matrix confirmation...");
+      setScreenMessage("Attendance verification is processing. We will update this screen when it finishes.");
     } catch (error) {
       setGpsLoading(false);
       if (error.status === 409 && error.body?.jobId) {
@@ -503,15 +502,15 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     enrollmentStatus.status === "enrolled"
       ? `Registered (${enrollmentStatus.modelVersion || "verified SHA-256"})`
       : enrollmentStatus.status === "processing"
-        ? "Processing vector..."
+        ? "Processing..."
         : enrollmentStatus.status === "re_enrollment_required"
           ? "Action Required: Re-enroll Face"
           : "Not Registered";
 
   const attendanceLabel = attendanceJob
-    ? `${attendanceJob.status.toUpperCase()} ${attendanceJob.resolvedAt ? `• ${formatDateTime(attendanceJob.resolvedAt)}` : ""}`
+    ? `${attendanceJob.status.toUpperCase()} ${attendanceJob.resolvedAt ? `- ${formatDateTime(attendanceJob.resolvedAt)}` : ""}`
     : latestHistoryRecord
-      ? `${latestHistoryRecord.status.toUpperCase()} • ${formatDateTime(latestHistoryRecord.submittedAt)}`
+      ? `${latestHistoryRecord.status.toUpperCase()} - ${formatDateTime(latestHistoryRecord.submittedAt)}`
       : "No secure logs found";
 
   // Filter history logs dynamically based on select chip
@@ -548,8 +547,8 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
             <View style={styles.hero}>
               <View style={styles.heroHeader}>
                 <View>
-                  <Text style={styles.eyebrow}>TACTICAL RESIDENT MONITOR</Text>
-                  <Text style={styles.heading}>{user.name.split(" ")[0]}'s Portal</Text>
+                  <Text style={styles.eyebrow}>RESIDENT DASHBOARD</Text>
+                  <Text style={styles.heading}>Hi, {user.name.split(" ")[0]}</Text>
                 </View>
                 <Pressable onPress={() => refreshDashboard()} disabled={isRefreshing} style={styles.refreshBadge}>
                   <Ionicons name={isRefreshing ? "sync" : "refresh-outline"} size={16} color="#06B6D4" style={isRefreshing ? styles.refreshSpinning : null} />
@@ -557,12 +556,12 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                 </Pressable>
               </View>
               <Text style={styles.copy}>
-                Synchronized telemetry matches location metrics and biometric arrays against scheduled attendance windows.
+                Track attendance windows, face registration, leave requests, and your resident pass.
               </Text>
               
               <View style={styles.heroActions}>
                 <ActionButton 
-                  label="SHUT DOWN SESSION" 
+                  label="SIGN OUT"
                   onPress={logout} 
                   tone="secondary" 
                   icon={<Ionicons name="power-outline" size={16} color="#cbd5e1" />}
@@ -582,8 +581,8 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
 
 
             <SectionCard
-              title="Biometric Matrix Registration"
-              subtitle="Register a secure, encrypted facial template hash."
+              title="Face Registration"
+              subtitle="Register your face once before marking attendance."
               icon={<MaterialCommunityIcons name="face-recognition" size={18} color="#06B6D4" />}
               rightAction={
                 <ActionButton
@@ -604,7 +603,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
               }
             >
               <StatusCard
-                label="REGISTRATION STATUS"
+                label="FACE STATUS"
                 value={enrollmentLabel}
                 tone={
                   enrollmentStatus.status === "enrolled"
@@ -616,15 +615,15 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                         : "light"
                 }
               />
-              <View style={{ height: 8 }} />
+              <View style={styles.spacerSmall} />
               <Text style={styles.sectionCopy}>
-                The registered photo is converted to a vector embedding. High-security encryption stores the hash; raw pixel data is deleted post-computation.
+                Keep your face registration current so attendance checks stay fast and reliable.
               </Text>
             </SectionCard>
 
             <SectionCard
-              title="Secure Attendance Verification"
-              subtitle="Verify live location and face biometrics."
+              title="Attendance Check"
+              subtitle="Mark attendance during an open hostel window."
               icon={<Ionicons name="shield-checkmark-outline" size={18} color="#06B6D4" />}
               rightAction={
                 <ActionButton
@@ -636,18 +635,18 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
               }
             >
               <StatusCard
-                label="ATTENDANCE WINDOW"
-                value={currentWindow ? "OPEN - ACCEPTING BIOMETRICS" : "CLOSED - CHECK BACK LATER"}
+                label="CURRENT WINDOW"
+                value={currentWindow ? "OPEN - READY" : "CLOSED - CHECK BACK LATER"}
                 tone={currentWindow ? "accent" : "light"}
               />
-              <View style={{ height: 8 }} />
+              <View style={styles.spacerSmall} />
               <StatusCard
-                label="LATEST VERIFICATION ATTEMPT"
+                label="LATEST ATTEMPT"
                 value={attendanceLabel}
                 tone={getAttendanceTone(attendanceJob?.status || latestHistoryRecord?.status)}
               />
               <Text style={styles.sectionCopy}>
-                Requires location accuracy &lt;= 30 metres. If attendance fails, contact your campus warden to submit an admin override.
+                Requires location accuracy within 30 metres. If a valid attempt fails, contact your hostel warden.
               </Text>
             </SectionCard>
           </ScrollView>
@@ -701,7 +700,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                 </View>
               </View>
               <Text style={styles.inputHint}>
-                Use `YYYY-MM-DD` to match the leave service validation rules.
+                Use YYYY-MM-DD for both dates.
               </Text>
 
               <Text style={styles.fieldLabel}>Destination</Text>
@@ -801,7 +800,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
             <View style={styles.historyHeaderSection}>
               <Text style={styles.historySectionTitle}>Secure Audit Logs</Text>
               <Text style={styles.historySectionSubtitle}>
-                Verified biometric history fetched from authorized gateway.
+                Review your recent attendance attempts and verification results.
               </Text>
             </View>
 
@@ -849,7 +848,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
             <View style={styles.historyHeaderSection}>
               <Text style={styles.historySectionTitle}>Resident Credentials</Text>
               <Text style={styles.historySectionSubtitle}>
-                Present this cryptographically verified pass at any security gateway.
+                Use this pass when hostel staff need to confirm your student account.
               </Text>
             </View>
 
