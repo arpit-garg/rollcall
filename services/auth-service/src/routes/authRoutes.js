@@ -2,9 +2,17 @@ import { createHmac } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { env } from "../config/env.js";
-import { findUserByEmail, findUserById, createUser } from "../repositories/usersRepository.js";
+import {
+  createParentForStudent,
+  createUser,
+  findParentLinkByStudentId,
+  findUserByEmail,
+  findUserById,
+  listWardens
+} from "../repositories/usersRepository.js";
 import { pool } from "../config/db.js";
 import { getRedisClient } from "../config/redis.js";
+import { requireAuth } from "../middlewares/auth.js";
 import {
   consumeRefreshSession,
   persistRefreshSession,
@@ -22,6 +30,8 @@ const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_RATE_LIMIT_WINDOW_SECONDS = Math.ceil(LOGIN_RATE_LIMIT_WINDOW_MS / 1000);
 const LOGIN_RATE_LIMIT_NAMESPACE = "auth:login-failures";
+const STUDENT_EMAIL_PATTERN = /^[^\s@]+@nitj\.ac\.in$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function authCookieOptions() {
   return {
@@ -70,6 +80,26 @@ function emailConflict(res) {
   });
 }
 
+function conflict(res, code, message) {
+  return res.status(409).json({
+    error: {
+      code,
+      message,
+      retryable: false
+    }
+  });
+}
+
+function notFound(res, message) {
+  return res.status(404).json({
+    error: {
+      code: "NOT_FOUND",
+      message,
+      retryable: false
+    }
+  });
+}
+
 function getRequiredString(body, fieldName) {
   const value = body?.[fieldName];
 
@@ -94,6 +124,10 @@ function getOptionalString(body, fieldName) {
 
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function hasBodyField(body, fieldName) {
+  return Object.prototype.hasOwnProperty.call(body || {}, fieldName);
 }
 
 function getRefreshTokenFromRequest(req) {
@@ -187,6 +221,76 @@ function isUniqueEmailViolation(error) {
     (String(error.constraint || "").includes("users_email") ||
       String(error.detail || "").toLowerCase().includes("email"))
   );
+}
+
+function isParentStudentLinkViolation(error) {
+  return (
+    error?.code === "23505" &&
+    (String(error.constraint || "").includes("parent_students") ||
+      String(error.detail || "").toLowerCase().includes("student_id"))
+  );
+}
+
+function isNitjStudentEmail(email) {
+  return STUDENT_EMAIL_PATTERN.test(email);
+}
+
+function isUuid(value) {
+  return UUID_PATTERN.test(value);
+}
+
+function mapHostel(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    centerLat: row.center_lat === null ? null : Number(row.center_lat),
+    centerLng: row.center_lng === null ? null : Number(row.center_lng),
+    radiusMetres: row.radius_metres,
+    createdAt: row.created_at
+  };
+}
+
+function mapManagedUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    hostelId: user.hostelId,
+    roomNumber: user.roomNumber,
+    isActive: user.isActive,
+    hostelName: user.hostelName || null
+  };
+}
+
+function getRequiredNumber(body, fieldName) {
+  const rawValue = body?.[fieldName];
+
+  if (typeof rawValue === "string" && !rawValue.trim()) {
+    return null;
+  }
+
+  const value = Number(rawValue);
+
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+async function hostelExists(hostelId) {
+  const { rowCount } = await pool.query(
+    `
+      SELECT 1
+      FROM hostels
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [hostelId]
+  );
+
+  return rowCount > 0;
 }
 
 router.post("/login", async (req, res, next) => {
@@ -343,6 +447,21 @@ router.post("/signup", async (req, res, next) => {
       return validationError(res, "Name, email, password, and hostel block are required");
     }
 
+    if (
+      ["parentName", "parentEmail", "parentPassword", "studentId"].some((fieldName) =>
+        hasBodyField(req.body, fieldName)
+      )
+    ) {
+      return validationError(
+        res,
+        "Parent signup is separate. Parents should register with the student's registered ID."
+      );
+    }
+
+    if (!isNitjStudentEmail(email)) {
+      return validationError(res, "Students must use an email address ending in @nitj.ac.in");
+    }
+
     const existingUser = await findUserByEmail(email);
 
     if (existingUser) {
@@ -390,10 +509,213 @@ router.post("/signup", async (req, res, next) => {
   }
 });
 
+router.post("/signup/parent", async (req, res, next) => {
+  try {
+    const name = getRequiredString(req.body, "name");
+    const email = getRequiredString(req.body, "email");
+    const password = getRequiredString(req.body, "password");
+    const studentId = getRequiredString(req.body, "studentId");
+
+    if (!name || !email || !password || !studentId) {
+      return validationError(res, "Name, email, password, and registered student ID are required");
+    }
+
+    if (!isUuid(studentId)) {
+      return validationError(res, "Registered student ID must be a valid ID");
+    }
+
+    const student = await findUserById(studentId);
+
+    if (!student || !student.isActive || student.role !== "student") {
+      return notFound(res, "Registered student ID not found");
+    }
+
+    const existingUser = await findUserByEmail(email);
+
+    if (existingUser) {
+      return emailConflict(res);
+    }
+
+    const existingLink = await findParentLinkByStudentId(student.id);
+
+    if (existingLink) {
+      return conflict(
+        res,
+        "STUDENT_ALREADY_LINKED",
+        "This registered student already has a linked parent account"
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    let parent;
+
+    try {
+      parent = await createParentForStudent({
+        name,
+        email,
+        passwordHash,
+        student
+      });
+    } catch (error) {
+      if (isUniqueEmailViolation(error)) {
+        return emailConflict(res);
+      }
+
+      if (isParentStudentLinkViolation(error)) {
+        return conflict(
+          res,
+          "STUDENT_ALREADY_LINKED",
+          "This registered student already has a linked parent account"
+        );
+      }
+
+      throw error;
+    }
+
+    const accessToken = createAccessToken(parent);
+    const refreshToken = createRefreshToken(parent);
+
+    await persistRefreshSession(
+      refreshToken,
+      {
+        userId: parent.id,
+        role: parent.role,
+        hostelId: parent.hostelId
+      },
+      getRefreshTokenTtlMs()
+    );
+
+    return res
+      .cookie(env.cookieName, refreshToken, authCookieOptions())
+      .status(201)
+      .json(authResponseBody(req, accessToken, refreshToken, parent));
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/hostels", async (req, res, next) => {
   try {
     const { rows } = await pool.query("SELECT id, name FROM hostels ORDER BY name ASC");
     return res.status(200).json({ data: rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/admin/hostels", requireAuth(["super_admin"]), async (_req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT id, name, center_lat, center_lng, radius_metres, created_at
+        FROM hostels
+        ORDER BY name ASC
+      `
+    );
+
+    return res.status(200).json({
+      data: rows.map(mapHostel)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/admin/hostels", requireAuth(["super_admin"]), async (req, res, next) => {
+  try {
+    const name = getRequiredString(req.body, "name");
+    const centerLat = getRequiredNumber(req.body, "centerLat");
+    const centerLng = getRequiredNumber(req.body, "centerLng");
+    const radiusMetres = getRequiredNumber(req.body, "radiusMetres");
+
+    if (!name || centerLat === null || centerLng === null || radiusMetres === null) {
+      return validationError(res, "name, centerLat, centerLng, and radiusMetres are required");
+    }
+
+    if (centerLat < -90 || centerLat > 90 || centerLng < -180 || centerLng > 180) {
+      return validationError(res, "centerLat and centerLng must be valid coordinates");
+    }
+
+    if (!Number.isInteger(radiusMetres) || radiusMetres <= 0) {
+      return validationError(res, "radiusMetres must be a positive integer");
+    }
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO hostels (name, center_lat, center_lng, radius_metres)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, name, center_lat, center_lng, radius_metres, created_at
+      `,
+      [name, centerLat, centerLng, radiusMetres]
+    );
+
+    return res.status(201).json({
+      data: mapHostel(rows[0])
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/admin/wardens", requireAuth(["super_admin"]), async (_req, res, next) => {
+  try {
+    return res.status(200).json({
+      data: (await listWardens()).map(mapManagedUser)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/admin/wardens", requireAuth(["super_admin"]), async (req, res, next) => {
+  try {
+    const name = getRequiredString(req.body, "name");
+    const email = getRequiredString(req.body, "email");
+    const password = getRequiredString(req.body, "password");
+    const hostelId = getRequiredString(req.body, "hostelId");
+
+    if (!name || !email || !password || !hostelId) {
+      return validationError(res, "name, email, password, and hostelId are required");
+    }
+
+    if (!(await hostelExists(hostelId))) {
+      return res.status(404).json({
+        error: {
+          code: "NOT_FOUND",
+          message: "Hostel not found",
+          retryable: false
+        }
+      });
+    }
+
+    const existingUser = await findUserByEmail(email);
+
+    if (existingUser) {
+      return emailConflict(res);
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    let user;
+
+    try {
+      user = await createUser({
+        name,
+        email,
+        passwordHash,
+        role: "warden",
+        hostelId
+      });
+    } catch (error) {
+      if (isUniqueEmailViolation(error)) {
+        return emailConflict(res);
+      }
+
+      throw error;
+    }
+
+    return res.status(201).json({
+      data: mapManagedUser(user)
+    });
   } catch (error) {
     return next(error);
   }

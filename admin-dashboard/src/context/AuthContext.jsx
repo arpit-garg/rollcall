@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { attendanceRequest, authRequest } from "../api/client.js";
+import { isSupportedDashboardRole } from "../config/roleConfig.js";
 
-const STORAGE_KEY = "hostel-attendance.warden-user";
+const STORAGE_KEY = "hostel-attendance.dashboard-user";
 
 const AuthContext = createContext(null);
 
@@ -18,7 +19,11 @@ function loadStoredSession() {
 
   try {
     const parsed = JSON.parse(rawSession);
-    const user = parsed?.user?.role === "warden" ? parsed.user : parsed?.role === "warden" ? parsed : null;
+    const user = isSupportedDashboardRole(parsed?.user?.role)
+      ? parsed.user
+      : isSupportedDashboardRole(parsed?.role)
+        ? parsed
+        : null;
     return user ? { accessToken: null, user } : null;
   } catch (_error) {
     window.sessionStorage.removeItem(STORAGE_KEY);
@@ -55,7 +60,7 @@ export function AuthProvider({ children }) {
         persistUser(null);
       })
       .finally(() => setIsHydrated(true));
-    // Restore once from the refresh cookie after loading the persisted warden user.
+    // Restore once from the refresh cookie after loading the persisted dashboard user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -71,7 +76,7 @@ export function AuthProvider({ children }) {
       })
     });
 
-    if (response.user?.role !== "warden") {
+    if (!isSupportedDashboardRole(response.user?.role)) {
       await authRequest("/auth/logout", {
         method: "POST",
         headers: response.accessToken
@@ -81,7 +86,45 @@ export function AuthProvider({ children }) {
           : undefined
       }).catch(() => null);
 
-      throw new Error("This dashboard is restricted to warden accounts.");
+      throw new Error("This dashboard is available only for warden, parent, and super admin accounts.");
+    }
+
+    const nextSession = {
+      accessToken: response.accessToken,
+      user: response.user
+    };
+
+    setSession(nextSession);
+    persistUser(nextSession);
+
+    return nextSession;
+  }
+
+  async function parentSignup({ name, email, password, studentId }) {
+    const response = await authRequest("/auth/signup/parent", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+        studentId
+      })
+    });
+
+    if (response.user?.role !== "parent") {
+      await authRequest("/auth/logout", {
+        method: "POST",
+        headers: response.accessToken
+          ? {
+              Authorization: `Bearer ${response.accessToken}`
+            }
+          : undefined
+      }).catch(() => null);
+
+      throw new Error("Parent signup did not return a parent dashboard account.");
     }
 
     const nextSession = {
@@ -133,7 +176,7 @@ export function AuthProvider({ children }) {
     }
   }
 
-  async function authorizedRequest(path, options = {}) {
+  async function authorizedServiceRequest(serviceRequest, path, options = {}) {
     if (!session?.accessToken) {
       throw new Error("Session expired. Please sign in again.");
     }
@@ -144,7 +187,7 @@ export function AuthProvider({ children }) {
     };
 
     try {
-      return await attendanceRequest(path, {
+      return await serviceRequest(path, {
         ...options,
         headers
       });
@@ -158,7 +201,7 @@ export function AuthProvider({ children }) {
         throw refreshError;
       });
 
-      return attendanceRequest(path, {
+      return serviceRequest(path, {
         ...options,
         headers: {
           ...(options.headers || {}),
@@ -166,6 +209,14 @@ export function AuthProvider({ children }) {
         }
       });
     }
+  }
+
+  async function authorizedRequest(path, options = {}) {
+    return authorizedServiceRequest(attendanceRequest, path, options);
+  }
+
+  async function authorizedAuthRequest(path, options = {}) {
+    return authorizedServiceRequest(authRequest, path, options);
   }
 
   return (
@@ -176,8 +227,10 @@ export function AuthProvider({ children }) {
         session,
         user: session?.user || null,
         login,
+        parentSignup,
         logout,
-        authorizedRequest
+        authorizedRequest,
+        authorizedAuthRequest
       }}
     >
       {children}

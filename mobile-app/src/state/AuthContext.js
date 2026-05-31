@@ -4,8 +4,10 @@ import {
   attendanceRequest,
   authRequest,
   getDefaultServerOrigin,
-  normalizeServerOrigin
+  normalizeServerOrigin,
+  resolveStoredServerOrigin
 } from "../api/client";
+import { buildStudentSignupPayload } from "../utils/studentPortal";
 
 const AuthContext = createContext(null);
 const SESSION_KEY = "hostel-attendance.mobile.session";
@@ -74,8 +76,16 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      const activeOrigin = storedServerOrigin || getDefaultServerOrigin();
+      const defaultOrigin = getDefaultServerOrigin();
+      const activeOrigin = resolveStoredServerOrigin({
+        storedOrigin: storedServerOrigin,
+        defaultOrigin
+      });
       const normalizedActiveOrigin = normalizeServerOrigin(activeOrigin);
+
+      if (storedServerOrigin !== normalizedActiveOrigin) {
+        await SecureStore.setItemAsync(SERVER_ORIGIN_KEY, normalizedActiveOrigin);
+      }
 
       if (storedSession?.user?.role === "student") {
         setSession({
@@ -144,18 +154,19 @@ export function AuthProvider({ children }) {
 
   async function signup({ name, email, password, hostelId, roomNumber }) {
     const normalizedOrigin = await setPreferredServerOrigin(preferredServerOrigin);
+    const payload = buildStudentSignupPayload({
+      name,
+      email,
+      password,
+      hostelId,
+      roomNumber
+    });
     const response = await authRequest(normalizedOrigin, "/auth/signup", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        name,
-        email,
-        password,
-        hostelId,
-        roomNumber
-      })
+      body: JSON.stringify(payload)
     });
 
     if (response.user?.role !== "student") {

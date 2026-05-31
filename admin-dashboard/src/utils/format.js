@@ -13,6 +13,18 @@ export function formatDateTime(value) {
   }).format(new Date(value));
 }
 
+export function formatDate(value) {
+  if (!value) {
+    return "--";
+  }
+
+  const normalizedValue = String(value).includes("T") ? value : `${value}T00:00:00`;
+
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium"
+  }).format(new Date(normalizedValue));
+}
+
 export function localDateTimeToISO(datetimeLocalValue) {
   if (!datetimeLocalValue) {
     return null;

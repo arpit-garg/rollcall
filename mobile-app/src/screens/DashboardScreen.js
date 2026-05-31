@@ -1,13 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   Text,
+  TextInput,
   View
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
@@ -20,6 +18,7 @@ import ActionButton from "../components/ActionButton";
 import SectionCard from "../components/SectionCard";
 import CaptureModal from "./CaptureModal";
 import HistoryItem from "./HistoryItem";
+import LeaveRequestItem from "../components/LeaveRequestItem";
 import {
   createIdempotencyKey,
   formatDateTime,
@@ -33,6 +32,10 @@ import {
 } from "../utils/windowNotifications";
 import { getVerificationResultMessage } from "../utils/attendanceMessages";
 import { getBestLocationFix, MAX_GPS_ACCURACY_METRES } from "../utils/location";
+import {
+  buildLeaveRequestPayload,
+  getLeaveRequestValidationMessage
+} from "../utils/studentPortal";
 
 // Gorgeous double-sided dynamic Resident ID Card
 function DigitalIDCard({ user, session, flipped, onFlip }) {
@@ -65,8 +68,8 @@ function DigitalIDCard({ user, session, flipped, onFlip }) {
               <Text style={styles.idCardLabel}>RESIDENT NAME</Text>
               <Text style={styles.idCardName}>{user.name.toUpperCase()}</Text>
 
-              <Text style={styles.idCardLabel}>IDENTIFICATION UID</Text>
-              <Text style={styles.idCardUid}>{user.id.slice(0, 13).toUpperCase()}</Text>
+              <Text style={styles.idCardLabel}>REGISTERED STUDENT ID</Text>
+              <Text selectable style={styles.idCardUid}>{user.id.toUpperCase()}</Text>
 
               <View style={styles.idCardRow}>
                 <View style={{ flex: 1 }}>
@@ -126,15 +129,26 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
   const [enrollmentStatus, setEnrollmentStatus] = useState({ status: "unknown" });
   const [currentWindow, setCurrentWindow] = useState(null);
   const [history, setHistory] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
   const [attendanceJob, setAttendanceJob] = useState(null);
   const [captureMode, setCaptureMode] = useState(null);
   const [isCaptureBusy, setIsCaptureBusy] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLeaveRefreshing, setIsLeaveRefreshing] = useState(false);
+  const [isLeaveSubmitting, setIsLeaveSubmitting] = useState(false);
+  const [hasLoadedLeaveRequests, setHasLoadedLeaveRequests] = useState(false);
+  const [leaveFormError, setLeaveFormError] = useState("");
+  const [leaveDraft, setLeaveDraft] = useState({
+    requestedFrom: "",
+    requestedTo: "",
+    destination: "",
+    reason: ""
+  });
   const currentWindowRef = useRef(null);
   const hasLoadedCurrentWindowRef = useRef(false);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, history, id
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, leave, history, id
   const [idCardFlipped, setIdCardFlipped] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("all"); // all, verified, pending, failed
 
@@ -191,6 +205,24 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     return records;
   }
 
+  async function loadLeaveRequests({ showLoader = false } = {}) {
+    if (showLoader) {
+      setIsLeaveRefreshing(true);
+    }
+
+    try {
+      const response = await authorizedRequest("/leaves");
+      const records = response.data || [];
+      setLeaveRequests(records);
+      setHasLoadedLeaveRequests(true);
+      return records;
+    } finally {
+      if (showLoader) {
+        setIsLeaveRefreshing(false);
+      }
+    }
+  }
+
   async function loadUnreadNotifications() {
     const response = await authorizedRequest("/notifications/unread");
     const notifications = response.data || [];
@@ -216,7 +248,13 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     }
 
     try {
-      await Promise.all([loadEnrollmentStatus(), loadCurrentWindow(), loadHistory(), loadUnreadNotifications()]);
+      await Promise.all([
+        loadEnrollmentStatus(),
+        loadCurrentWindow(),
+        loadHistory(),
+        loadLeaveRequests(),
+        loadUnreadNotifications()
+      ]);
     } catch (error) {
       setScreenMessage(normalizeErrorMessage(error));
     } finally {
@@ -417,7 +455,50 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     }
   }
 
+  function updateLeaveDraft(field, value) {
+    setLeaveDraft((currentDraft) => ({
+      ...currentDraft,
+      [field]: value
+    }));
+  }
+
+  async function submitLeaveRequest() {
+    const validationMessage = getLeaveRequestValidationMessage(leaveDraft);
+
+    if (validationMessage) {
+      setLeaveFormError(validationMessage);
+      return;
+    }
+
+    setLeaveFormError("");
+    setIsLeaveSubmitting(true);
+
+    try {
+      await authorizedRequest("/leaves", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(buildLeaveRequestPayload(leaveDraft))
+      });
+
+      setLeaveDraft({
+        requestedFrom: "",
+        requestedTo: "",
+        destination: "",
+        reason: ""
+      });
+      await loadLeaveRequests();
+      setScreenMessage("Leave request submitted and routed to your linked parent account.");
+    } catch (error) {
+      setLeaveFormError(normalizeErrorMessage(error));
+    } finally {
+      setIsLeaveSubmitting(false);
+    }
+  }
+
   const latestHistoryRecord = history[0] || null;
+  const pendingLeaveCount = leaveRequests.filter((request) => request.status === "pending").length;
   const enrollmentLabel =
     enrollmentStatus.status === "enrolled"
       ? `Registered (${enrollmentStatus.modelVersion || "verified SHA-256"})`
@@ -572,6 +653,148 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
           </ScrollView>
         ) : null}
 
+        {/* Leave Request Tab */}
+        {activeTab === "leave" ? (
+          <ScrollView contentContainerStyle={styles.container}>
+            <View style={styles.historyHeaderSection}>
+              <Text style={styles.historySectionTitle}>Leave Desk</Text>
+              <Text style={styles.historySectionSubtitle}>
+                Submit leave windows for parent approval and track each request without leaving the student app.
+              </Text>
+            </View>
+
+            <SectionCard
+              title="Request New Leave"
+              subtitle={
+                pendingLeaveCount > 0
+                  ? `${pendingLeaveCount} request${pendingLeaveCount === 1 ? "" : "s"} waiting on parent review.`
+                  : "Linked parent approval is required before leave can be approved."
+              }
+              icon={<Ionicons name="airplane-outline" size={18} color="#06B6D4" />}
+            >
+              <View style={styles.leaveFormRow}>
+                <View style={styles.leaveFieldColumn}>
+                  <Text style={styles.fieldLabel}>Departure Date</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="numbers-and-punctuation"
+                    value={leaveDraft.requestedFrom}
+                    onChangeText={(value) => updateLeaveDraft("requestedFrom", value)}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#475569"
+                  />
+                </View>
+                <View style={styles.leaveFieldColumn}>
+                  <Text style={styles.fieldLabel}>Return Date</Text>
+                  <TextInput
+                    style={styles.input}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="numbers-and-punctuation"
+                    value={leaveDraft.requestedTo}
+                    onChangeText={(value) => updateLeaveDraft("requestedTo", value)}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#475569"
+                  />
+                </View>
+              </View>
+              <Text style={styles.inputHint}>
+                Use `YYYY-MM-DD` to match the leave service validation rules.
+              </Text>
+
+              <Text style={styles.fieldLabel}>Destination</Text>
+              <TextInput
+                style={styles.input}
+                autoCapitalize="words"
+                autoCorrect={false}
+                value={leaveDraft.destination}
+                onChangeText={(value) => updateLeaveDraft("destination", value)}
+                placeholder="Chandigarh"
+                placeholderTextColor="#475569"
+              />
+
+              <Text style={styles.fieldLabel}>Reason</Text>
+              <TextInput
+                style={[styles.input, styles.multilineInput]}
+                autoCapitalize="sentences"
+                autoCorrect
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                value={leaveDraft.reason}
+                onChangeText={(value) => updateLeaveDraft("reason", value)}
+                placeholder="Briefly explain why you need leave."
+                placeholderTextColor="#475569"
+              />
+
+              {leaveFormError ? (
+                <View style={styles.errorBanner}>
+                  <Ionicons name="alert-circle-outline" size={18} color="#f87171" style={{ marginRight: 6 }} />
+                  <Text style={styles.errorText}>{leaveFormError}</Text>
+                </View>
+              ) : null}
+
+              <ActionButton
+                label={isLeaveSubmitting ? "SUBMITTING..." : "SEND FOR APPROVAL"}
+                onPress={submitLeaveRequest}
+                disabled={isLeaveSubmitting}
+                icon={
+                  isLeaveSubmitting ? (
+                    <ActivityIndicator size="small" color="#081f29" />
+                  ) : (
+                    <Ionicons name="send-outline" size={16} color="#081f29" />
+                  )
+                }
+              />
+            </SectionCard>
+
+            <SectionCard
+              title="Your Leave Requests"
+              subtitle="Statuses update here after your parent reviews them."
+              icon={<Ionicons name="file-tray-full-outline" size={18} color="#06B6D4" />}
+              rightAction={
+                <ActionButton
+                  label={isLeaveRefreshing ? "SYNCING..." : "SYNC"}
+                  onPress={() => loadLeaveRequests({ showLoader: true }).catch((error) => {
+                    setScreenMessage(normalizeErrorMessage(error));
+                  })}
+                  disabled={isLeaveRefreshing}
+                  tone="secondary"
+                  icon={
+                    isLeaveRefreshing ? (
+                      <ActivityIndicator size="small" color="#cbd5e1" />
+                    ) : (
+                      <Ionicons name="refresh-outline" size={16} color="#cbd5e1" />
+                    )
+                  }
+                />
+              }
+            >
+              {!hasLoadedLeaveRequests && isRefreshing ? (
+                <View style={styles.leaveLoadingState}>
+                  <ActivityIndicator size="small" color="#06B6D4" />
+                  <Text style={styles.sectionCopy}>Loading leave requests...</Text>
+                </View>
+              ) : leaveRequests.length === 0 ? (
+                <View style={styles.emptyHistoryBox}>
+                  <Ionicons name="airplane-outline" size={32} color="#475569" style={{ marginBottom: 8 }} />
+                  <Text style={styles.emptyHistory}>
+                    No leave requests submitted yet.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.leaveRequestList}>
+                  {leaveRequests.map((request) => (
+                    <LeaveRequestItem key={request.id} request={request} />
+                  ))}
+                </View>
+              )}
+            </SectionCard>
+          </ScrollView>
+        ) : null}
+
         {/* History Logs Scroll Tab */}
         {activeTab === "history" ? (
           <ScrollView contentContainerStyle={styles.container}>
@@ -654,6 +877,20 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
             />
             <Text style={[styles.tabLabel, activeTab === "dashboard" ? styles.tabLabelActive : null]}>
               HUD
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setActiveTab("leave")}
+            style={styles.tabItem}
+          >
+            <Ionicons
+              name={activeTab === "leave" ? "airplane" : "airplane-outline"}
+              size={22}
+              color={activeTab === "leave" ? "#06B6D4" : "#94a3b8"}
+            />
+            <Text style={[styles.tabLabel, activeTab === "leave" ? styles.tabLabelActive : null]}>
+              LEAVE
             </Text>
           </Pressable>
 

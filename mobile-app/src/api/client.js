@@ -4,7 +4,8 @@ import appConfig from "../../app.json";
 import {
   buildApiUrl,
   getDefaultServerOriginFromRuntime,
-  normalizeServerOrigin as normalizeOrigin
+  normalizeServerOrigin as normalizeOrigin,
+  resolveStoredServerOrigin as resolveStoredOrigin
 } from "./serverOrigin";
 
 const ENV_SERVER_ORIGIN =
@@ -46,6 +47,13 @@ export function getDefaultServerOrigin() {
 
 export function normalizeServerOrigin(value) {
   return normalizeOrigin(value, getDefaultServerOrigin());
+}
+
+export function resolveStoredServerOrigin({ storedOrigin, defaultOrigin } = {}) {
+  return resolveStoredOrigin({
+    storedOrigin,
+    defaultOrigin: defaultOrigin || getDefaultServerOrigin()
+  });
 }
 
 function buildUrl(origin, path) {

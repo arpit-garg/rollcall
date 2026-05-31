@@ -7,10 +7,12 @@ import {
   findRecordByJobIdForStudent,
   getRecordById,
   getStudentHistory,
+  listHostelStudentSummaries,
   listOverrides,
   resolveRecord
 } from "../repositories/attendanceRepository.js";
 import { findFaceTemplate, invalidateTemplate } from "../repositories/faceTemplatesRepository.js";
+import { findLinkedStudentForParent } from "../repositories/parentLinksRepository.js";
 import { findHostelById } from "../repositories/hostelsRepository.js";
 import { findActiveWindow } from "../repositories/windowsRepository.js";
 import { env } from "../config/env.js";
@@ -190,6 +192,62 @@ export async function getJob(jobId, studentId) {
 
 export async function getHistory(studentId) {
   return getStudentHistory(studentId);
+}
+
+function buildHistorySummary(history) {
+  return history.reduce(
+    (summary, record) => {
+      switch (record.status) {
+        case "verified":
+          summary.verifiedCount += 1;
+          break;
+        case "failed":
+          summary.failedCount += 1;
+          break;
+        case "pending":
+          summary.pendingCount += 1;
+          break;
+        case "overridden":
+          summary.overriddenCount += 1;
+          break;
+        default:
+          break;
+      }
+
+      return summary;
+    },
+    {
+      verifiedCount: 0,
+      failedCount: 0,
+      pendingCount: 0,
+      overriddenCount: 0
+    }
+  );
+}
+
+export async function getChildAttendanceForParent(parentId) {
+  const student = await findLinkedStudentForParent(parentId);
+
+  if (!student?.isActive) {
+    throw httpError(404, "NOT_FOUND", "Linked student not found");
+  }
+
+  const history = await getStudentHistory(student.id);
+
+  return {
+    student: {
+      id: student.id,
+      name: student.name,
+      hostelId: student.hostelId,
+      roomNumber: student.roomNumber
+    },
+    summary: buildHistorySummary(history),
+    history
+  };
+}
+
+export async function getHostelStudentAttendanceSummary(hostelId) {
+  return listHostelStudentSummaries(hostelId);
 }
 
 export async function createAttendanceOverride({ recordId, wardenId, hostelId, reason }) {

@@ -174,6 +174,88 @@ async function insertAttendanceRecord({ windowId, status = "failed", submittedAt
   };
 }
 
+async function insertAttendanceRecordForStudent({
+  windowId,
+  studentId: recordStudentId,
+  status = "failed",
+  submittedAt = "now()"
+}) {
+  const jobId = randomUUID();
+  const { rows } = await pool.query(
+    `
+      INSERT INTO attendance_records (
+        window_id,
+        student_id,
+        status,
+        job_id,
+        geo_lat,
+        geo_lng,
+        geo_verified,
+        face_score,
+        liveness_score,
+        submitted_at,
+        resolved_at
+      )
+      VALUES ($1, $2, $3, $4, 28.613939, 77.209023, true, NULL, NULL, ${submittedAt}, ${status === "pending" ? "NULL" : "now()"})
+      RETURNING id, job_id
+    `,
+    [windowId, recordStudentId, status, jobId]
+  );
+
+  return {
+    id: rows[0].id,
+    jobId: rows[0].job_id
+  };
+}
+
+async function ensureParentLink({
+  parentId = "4f609ba8-4276-4494-8d0d-31ef1a6c7d10",
+  parentEmail = "test_parent_guardian@college.edu",
+  parentName = "Test Parent Guardian",
+  linkedStudentId = studentId,
+  linkedHostelId = hostelId
+} = {}) {
+  await pool.query(
+    `
+      INSERT INTO users (id, name, email, password_hash, role, hostel_id, room_number, is_active)
+      VALUES (
+        $1,
+        $2,
+        $3,
+        '$2a$10$KOm/zgc.9aDfkSfgVJLhhuWWKJfy63F/fAAyYyiTDiy3oKdYJJyUW',
+        'parent',
+        $4,
+        NULL,
+        true
+      )
+      ON CONFLICT (email) DO UPDATE
+      SET
+        name = EXCLUDED.name,
+        password_hash = EXCLUDED.password_hash,
+        role = EXCLUDED.role,
+        hostel_id = EXCLUDED.hostel_id,
+        room_number = EXCLUDED.room_number,
+        is_active = EXCLUDED.is_active
+    `,
+    [parentId, parentName, parentEmail, linkedHostelId]
+  );
+
+  await pool.query(
+    `
+      INSERT INTO parent_students (parent_id, student_id)
+      VALUES ($1, $2)
+      ON CONFLICT (student_id) DO UPDATE
+      SET parent_id = EXCLUDED.parent_id
+    `,
+    [parentId, linkedStudentId]
+  );
+
+  return {
+    parentId,
+    parentEmail
+  };
+}
+
 async function listObjectNames(prefix) {
   const objects = [];
   await new Promise((resolve, reject) => {
@@ -321,6 +403,53 @@ before(async () => {
 
 beforeEach(async () => {
   await redis.flushDb();
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'leave_requests'
+      ) THEN
+        DELETE FROM leave_requests;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'parent_students'
+      ) THEN
+        DELETE FROM parent_students;
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'notifications'
+      ) THEN
+        DELETE FROM notifications
+        WHERE user_id IN (
+          SELECT id FROM users WHERE email LIKE 'test_parent_%@college.edu'
+        );
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'audit_logs'
+      ) THEN
+        DELETE FROM audit_logs
+        WHERE actor_id IN (
+          SELECT id FROM users WHERE email LIKE 'test_parent_%@college.edu'
+        );
+      END IF;
+    END $$;
+  `);
+  await pool.query("DELETE FROM users WHERE email LIKE 'test_parent_%@college.edu'");
   await pool.query(
     `
       UPDATE users
@@ -823,6 +952,152 @@ test("history and job polling reflect resolved attendance records", async () => 
   const queueStatus = await getVerificationQueueStatus();
   assert.equal(queueStatus.workerActive, true);
   assert.ok(queueStatus.processedJobs >= 1);
+});
+
+test("linked parents can review their child's leave requests", async () => {
+  const { parentId } = await ensureParentLink();
+  const parentAuthHeader = {
+    Authorization: `Bearer ${createToken(parentId, "parent")}`
+  };
+
+  const createLeaveResponse = await jsonRequest(`${baseUrl}/api/v1/leaves`, {
+    method: "POST",
+    headers: {
+      ...studentAuthHeader,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      requestedFrom: "2026-06-02",
+      requestedTo: "2026-06-04",
+      destination: "Ludhiana",
+      reason: "Medical appointment and family visit"
+    })
+  });
+
+  assert.equal(createLeaveResponse.status, 201, JSON.stringify(createLeaveResponse.json));
+  assert.equal(createLeaveResponse.json.data.status, "pending");
+  assert.equal(createLeaveResponse.json.data.parentId, parentId);
+
+  const parentListResponse = await jsonRequest(`${baseUrl}/api/v1/leaves`, {
+    headers: {
+      ...parentAuthHeader
+    }
+  });
+
+  assert.equal(parentListResponse.status, 200, JSON.stringify(parentListResponse.json));
+  assert.equal(parentListResponse.json.data.length, 1);
+  assert.equal(parentListResponse.json.data[0].studentId, studentId);
+  assert.equal(parentListResponse.json.data[0].status, "pending");
+
+  const decisionResponse = await jsonRequest(
+    `${baseUrl}/api/v1/leaves/${createLeaveResponse.json.data.id}/decision`,
+    {
+      method: "PATCH",
+      headers: {
+        ...parentAuthHeader,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        decision: "approved",
+        note: "Approved by parent after call"
+      })
+    }
+  );
+
+  assert.equal(decisionResponse.status, 200, JSON.stringify(decisionResponse.json));
+  assert.equal(decisionResponse.json.data.status, "approved");
+  assert.equal(decisionResponse.json.data.parentNote, "Approved by parent after call");
+
+  const studentListResponse = await jsonRequest(`${baseUrl}/api/v1/leaves`, {
+    headers: {
+      ...studentAuthHeader
+    }
+  });
+
+  assert.equal(studentListResponse.status, 200, JSON.stringify(studentListResponse.json));
+  assert.equal(studentListResponse.json.data.length, 1);
+  assert.equal(studentListResponse.json.data[0].status, "approved");
+
+  const { rows } = await pool.query(
+    "SELECT status, parent_note FROM leave_requests WHERE id = $1",
+    [createLeaveResponse.json.data.id]
+  );
+
+  assert.equal(rows[0].status, "approved");
+  assert.equal(rows[0].parent_note, "Approved by parent after call");
+});
+
+test("linked parents can see only their child's attendance history", async () => {
+  const { parentId } = await ensureParentLink();
+  const parentAuthHeader = {
+    Authorization: `Bearer ${createToken(parentId, "parent")}`
+  };
+  const windowId = await createWindowForTests();
+
+  await insertAttendanceRecordForStudent({
+    windowId,
+    studentId,
+    status: "verified",
+    submittedAt: "now() - interval '20 minutes'"
+  });
+  await insertAttendanceRecordForStudent({
+    windowId,
+    studentId: sameHostelSecondStudentId,
+    status: "failed",
+    submittedAt: "now() - interval '10 minutes'"
+  });
+
+  const response = await jsonRequest(`${baseUrl}/api/v1/attendance/children`, {
+    headers: {
+      ...parentAuthHeader
+    }
+  });
+
+  assert.equal(response.status, 200, JSON.stringify(response.json));
+  assert.equal(response.json.data.student.id, studentId);
+  assert.equal(response.json.data.summary.verifiedCount, 1);
+  assert.equal(response.json.data.summary.failedCount, 0);
+  assert.equal(response.json.data.history.length, 1);
+  assert.equal(response.json.data.history[0].studentId, studentId);
+  assert.equal(response.json.data.history[0].status, "verified");
+});
+
+test("wardens can fetch student-wise attendance summaries for their hostel", async () => {
+  const windowId = await createWindowForTests();
+
+  await insertAttendanceRecordForStudent({
+    windowId,
+    studentId,
+    status: "verified",
+    submittedAt: "now() - interval '15 minutes'"
+  });
+  await insertAttendanceRecordForStudent({
+    windowId,
+    studentId: sameHostelSecondStudentId,
+    status: "failed",
+    submittedAt: "now() - interval '5 minutes'"
+  });
+
+  const response = await jsonRequest(`${baseUrl}/api/v1/attendance/students/summary`, {
+    headers: {
+      ...wardenAuthHeader
+    }
+  });
+
+  assert.equal(response.status, 200, JSON.stringify(response.json));
+  assert.ok(response.json.data.length >= 2);
+
+  const firstStudent = response.json.data.find((record) => record.studentId === studentId);
+  const secondStudent = response.json.data.find((record) => record.studentId === sameHostelSecondStudentId);
+
+  assert.ok(firstStudent);
+  assert.ok(secondStudent);
+  assert.equal(firstStudent.verifiedCount, 1);
+  assert.equal(firstStudent.failedCount, 0);
+  assert.equal(firstStudent.lastStatus, "verified");
+  assert.equal(secondStudent.verifiedCount, 0);
+  assert.equal(secondStudent.failedCount, 1);
+  assert.equal(secondStudent.lastStatus, "failed");
 });
 
 test("enrollment stores template ref in minio and cleans temp object", async () => {

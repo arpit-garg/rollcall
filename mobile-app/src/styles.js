@@ -269,6 +269,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     height: 46
   },
+  multilineInput: {
+    minHeight: 110,
+    height: "auto",
+    paddingTop: 12,
+    paddingBottom: 12
+  },
   inputFocused: {
     borderColor: "#06B6D4",
     backgroundColor: "rgba(6, 182, 212, 0.02)"
@@ -538,6 +544,108 @@ const styles = StyleSheet.create({
   historyListContainer: {
     gap: 10
   },
+  leaveFormRow: {
+    flexDirection: "row",
+    gap: 12
+  },
+  leaveFieldColumn: {
+    flex: 1
+  },
+  leaveLoadingState: {
+    paddingVertical: 12,
+    gap: 8,
+    alignItems: "flex-start"
+  },
+  leaveRequestList: {
+    gap: 10
+  },
+  leaveRequestCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.04)",
+    backgroundColor: "rgba(255, 255, 255, 0.015)",
+    padding: 14,
+    gap: 12
+  },
+  leaveRequestHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12
+  },
+  leaveRequestTitleWrap: {
+    flex: 1,
+    gap: 4
+  },
+  leaveRequestRange: {
+    color: "#f8fafc",
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: -0.2
+  },
+  leaveRequestTimestamp: {
+    color: "#64748b",
+    fontSize: 11
+  },
+  leaveStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.03)"
+  },
+  leaveStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8
+  },
+  leaveDetailGrid: {
+    gap: 8
+  },
+  leaveDetailCard: {
+    backgroundColor: "rgba(0, 0, 0, 0.15)",
+    borderRadius: 12,
+    padding: 10,
+    gap: 4
+  },
+  leaveDetailLabel: {
+    color: "#64748b",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase"
+  },
+  leaveDetailValue: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    lineHeight: 18
+  },
+  leaveParentNoteBox: {
+    backgroundColor: "rgba(6, 182, 212, 0.05)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(6, 182, 212, 0.12)",
+    padding: 10,
+    gap: 4
+  },
+  leaveParentNoteLabel: {
+    color: "#22d3ee",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase"
+  },
+  leaveParentNoteValue: {
+    color: "#cbd5e1",
+    fontSize: 13,
+    lineHeight: 18
+  },
+  leaveDecisionStamp: {
+    color: "#64748b",
+    fontSize: 11
+  },
   idCardTabContainer: {
     alignItems: "stretch"
   },
@@ -677,9 +785,10 @@ const styles = StyleSheet.create({
   },
   idCardUid: {
     color: "#22d3ee",
-    fontSize: 10,
+    fontSize: 8,
     fontWeight: "700",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace"
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    lineHeight: 10
   },
   idCardRow: {
     flexDirection: "row",

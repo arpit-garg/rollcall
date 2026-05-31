@@ -56,7 +56,88 @@ before(async () => {
 
 beforeEach(async () => {
   await redis.flushDb();
-  await pool.query("DELETE FROM users WHERE email LIKE 'test_%@college.edu'");
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'leave_requests'
+      ) THEN
+        DELETE FROM leave_requests
+        WHERE parent_id IN (
+          SELECT id
+          FROM users
+          WHERE email LIKE 'test_%@college.edu'
+             OR email LIKE 'test_%@nitj.ac.in'
+        )
+        OR student_id IN (
+          SELECT id
+          FROM users
+          WHERE email LIKE 'test_%@college.edu'
+             OR email LIKE 'test_%@nitj.ac.in'
+        );
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'audit_logs'
+      ) THEN
+        DELETE FROM audit_logs
+        WHERE actor_id IN (
+          SELECT id
+          FROM users
+          WHERE email LIKE 'test_%@college.edu'
+             OR email LIKE 'test_%@nitj.ac.in'
+        );
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'notifications'
+      ) THEN
+        DELETE FROM notifications
+        WHERE user_id IN (
+          SELECT id
+          FROM users
+          WHERE email LIKE 'test_%@college.edu'
+             OR email LIKE 'test_%@nitj.ac.in'
+        );
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'parent_students'
+      ) THEN
+        DELETE FROM parent_students
+        WHERE parent_id IN (
+          SELECT id
+          FROM users
+          WHERE email LIKE 'test_%@college.edu'
+             OR email LIKE 'test_%@nitj.ac.in'
+        )
+        OR student_id IN (
+          SELECT id
+          FROM users
+          WHERE email LIKE 'test_%@college.edu'
+             OR email LIKE 'test_%@nitj.ac.in'
+        );
+      END IF;
+    END $$;
+  `);
+  await pool.query("DELETE FROM users WHERE email LIKE 'test_%@college.edu' OR email LIKE 'test_%@nitj.ac.in'");
+  await pool.query(`
+    DELETE FROM hostels
+    WHERE name = 'Test Girls Hostel'
+       OR name LIKE 'test-hostel-%'
+  `);
 });
 
 after(async () => {
@@ -268,6 +349,280 @@ test("hostels endpoint returns list of seeded hostels", async () => {
   assert.ok(body.data.some((hostel) => hostel.name === "Main Boys Hostel"));
 });
 
+test("student signup requires an NITJ email and rejects inline parent details", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Wrong Domain",
+      email: "test_wrong_domain@college.edu",
+      password: "TestPassword123",
+      hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4",
+      roomNumber: "B-112"
+    })
+  });
+
+  assert.equal(response.status, 400);
+
+  const body = await response.json();
+  assert.equal(body.error.code, "VALIDATION_ERROR");
+  assert.match(body.error.message, /@nitj\.ac\.in/);
+
+  const inlineParentResponse = await fetch(`${baseUrl}/api/v1/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Inline Parent",
+      email: "test_inline_parent@nitj.ac.in",
+      password: "TestPassword123",
+      hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4",
+      parentName: "Test Parent",
+      parentEmail: "test_parent_guardian@college.edu",
+      parentPassword: "ParentPassword123"
+    })
+  });
+
+  assert.equal(inlineParentResponse.status, 400);
+
+  const inlineParentBody = await inlineParentResponse.json();
+  assert.equal(inlineParentBody.error.code, "VALIDATION_ERROR");
+  assert.match(inlineParentBody.error.message, /Parent signup/i);
+});
+
+test("parent signup creates a linked parent account for a registered student id", async () => {
+  const studentResponse = await fetch(`${baseUrl}/api/v1/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Parent Link Student",
+      email: "test_parent_link_student@nitj.ac.in",
+      password: "TestPassword123",
+      hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4",
+      roomNumber: "B-112"
+    })
+  });
+
+  assert.equal(studentResponse.status, 201);
+
+  const studentBody = await studentResponse.json();
+  const parentResponse = await fetch(`${baseUrl}/api/v1/auth/signup/parent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Parent",
+      email: "test_parent_guardian@college.edu",
+      password: "ParentPassword123",
+      studentId: studentBody.user.id
+    })
+  });
+
+  assert.equal(parentResponse.status, 201);
+
+  const parentSignupBody = await parentResponse.json();
+  assert.ok(parentSignupBody.accessToken);
+  assert.equal(parentSignupBody.user.role, "parent");
+  assert.equal(parentSignupBody.user.hostelId, "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4");
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        ps.student_id,
+        ps.parent_id,
+        parent.email AS parent_email,
+        parent.role AS parent_role,
+        parent.hostel_id AS parent_hostel_id
+      FROM parent_students ps
+      INNER JOIN users student ON student.id = ps.student_id
+      INNER JOIN users parent ON parent.id = ps.parent_id
+      WHERE student.email = $1
+      LIMIT 1
+    `,
+    ["test_parent_link_student@nitj.ac.in"]
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].parent_email, "test_parent_guardian@college.edu");
+  assert.equal(rows[0].parent_role, "parent");
+  assert.equal(rows[0].parent_hostel_id, "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4");
+
+  const parentLoginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      email: "test_parent_guardian@college.edu",
+      password: "ParentPassword123"
+    })
+  });
+
+  assert.equal(parentLoginResponse.status, 200);
+
+  const parentBody = await parentLoginResponse.json();
+  assert.equal(parentBody.user.role, "parent");
+  assert.equal(parentBody.user.hostelId, "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4");
+});
+
+test("parent signup requires a registered student id", async () => {
+  const malformedResponse = await fetch(`${baseUrl}/api/v1/auth/signup/parent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Malformed Parent",
+      email: "test_malformed_parent@college.edu",
+      password: "ParentPassword123",
+      studentId: "not-a-uuid"
+    })
+  });
+
+  assert.equal(malformedResponse.status, 400);
+
+  const malformedBody = await malformedResponse.json();
+  assert.equal(malformedBody.error.code, "VALIDATION_ERROR");
+  assert.match(malformedBody.error.message, /registered student ID/i);
+
+  const response = await fetch(`${baseUrl}/api/v1/auth/signup/parent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: "Test Unlinked Parent",
+      email: "test_unlinked_parent@college.edu",
+      password: "ParentPassword123",
+      studentId: "f0000000-0000-4000-8000-000000000000"
+    })
+  });
+
+  assert.equal(response.status, 404);
+
+  const body = await response.json();
+  assert.equal(body.error.code, "NOT_FOUND");
+  assert.match(body.error.message, /Registered student/i);
+});
+
+test("super admins can create hostels and warden accounts from protected endpoints", async () => {
+  const testHostelName = "test-hostel-girls";
+  try {
+    await pool.query(
+      `
+        INSERT INTO users (id, name, email, password_hash, role, hostel_id, room_number, is_active)
+        VALUES (
+          'fbc1aa4f-9147-4ec2-9a0f-25e524977f80',
+          'Test Super Admin',
+          'test_superadmin@college.edu',
+          '$2a$10$GtwXiJPyYapRPBoR/Gqkq.D6GwEIxMJB/isVne5CORGS7tnpCKGcW',
+          'super_admin',
+          NULL,
+          NULL,
+          true
+        )
+        ON CONFLICT (email) DO UPDATE
+        SET
+          name = EXCLUDED.name,
+          password_hash = EXCLUDED.password_hash,
+          role = EXCLUDED.role,
+          hostel_id = EXCLUDED.hostel_id,
+          room_number = EXCLUDED.room_number,
+          is_active = EXCLUDED.is_active
+      `
+    );
+
+    const loginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: "test_superadmin@college.edu",
+        password: "Warden@123"
+      })
+    });
+
+    assert.equal(loginResponse.status, 200);
+
+    const loginBody = await loginResponse.json();
+    assert.equal(loginBody.user.role, "super_admin");
+
+    const createHostelResponse = await fetch(`${baseUrl}/api/v1/auth/admin/hostels`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${loginBody.accessToken}`
+      },
+      body: JSON.stringify({
+        name: testHostelName,
+        centerLat: 28.619102,
+        centerLng: 77.214812,
+        radiusMetres: 225
+      })
+    });
+
+    assert.equal(createHostelResponse.status, 201);
+
+    const hostelBody = await createHostelResponse.json();
+    assert.equal(hostelBody.data.name, testHostelName);
+    assert.equal(hostelBody.data.radiusMetres, 225);
+
+    const createWardenResponse = await fetch(`${baseUrl}/api/v1/auth/admin/wardens`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${loginBody.accessToken}`
+      },
+      body: JSON.stringify({
+        name: "Test Girls Hostel Warden",
+        email: "test_new_warden@college.edu",
+        password: "Warden@123",
+        hostelId: hostelBody.data.id
+      })
+    });
+
+    assert.equal(createWardenResponse.status, 201);
+
+    const wardenBody = await createWardenResponse.json();
+    assert.equal(wardenBody.data.role, "warden");
+    assert.equal(wardenBody.data.hostelId, hostelBody.data.id);
+
+    const wardenLoginResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: "test_new_warden@college.edu",
+        password: "Warden@123"
+      })
+    });
+
+    assert.equal(wardenLoginResponse.status, 200);
+
+    const wardenLoginBody = await wardenLoginResponse.json();
+    assert.equal(wardenLoginBody.user.role, "warden");
+    assert.equal(wardenLoginBody.user.hostelId, hostelBody.data.id);
+  } finally {
+    await pool.query("DELETE FROM users WHERE email LIKE 'test_%@college.edu'");
+    await pool.query(
+      `
+        DELETE FROM hostels
+        WHERE name = $1
+           OR name LIKE 'test-hostel-%'
+      `,
+      [testHostelName]
+    );
+  }
+});
+
 test("signup successfully registers a new student user and returns access token", async () => {
   const response = await fetch(`${baseUrl}/api/v1/auth/signup`, {
     method: "POST",
@@ -276,7 +631,7 @@ test("signup successfully registers a new student user and returns access token"
     },
     body: JSON.stringify({
       name: "Test Signup",
-      email: "test_signup@college.edu",
+      email: "test_signup@nitj.ac.in",
       password: "TestPassword123",
       hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4",
       roomNumber: "C-305"
@@ -301,7 +656,7 @@ test("signup successfully registers a new student user and returns access token"
     },
     body: JSON.stringify({
       name: "Test Signup",
-      email: "test_signup@college.edu",
+      email: "test_signup@nitj.ac.in",
       password: "TestPassword123",
       hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4"
     })
@@ -335,7 +690,7 @@ test("signup rejects malformed input without crashing on non-string values", asy
 test("duplicate signup race returns conflict instead of internal error", async () => {
   const payload = {
     name: "Test Race",
-    email: "test_race@college.edu",
+    email: "test_race@nitj.ac.in",
     password: "TestPassword123",
     hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4"
   };
@@ -344,7 +699,7 @@ test("duplicate signup race returns conflict instead of internal error", async (
     CREATE OR REPLACE FUNCTION test_slow_duplicate_signup()
     RETURNS trigger AS $$
     BEGIN
-      IF NEW.email = 'test_race@college.edu' THEN
+      IF NEW.email = 'test_race@nitj.ac.in' THEN
         PERFORM pg_sleep(0.1);
       END IF;
       RETURN NEW;
@@ -420,7 +775,7 @@ test("browser signup also keeps refresh token out of the response body", async (
     },
     body: JSON.stringify({
       name: "Test Browser Signup",
-      email: "test_browser_signup@college.edu",
+      email: "test_browser_signup@nitj.ac.in",
       password: "TestPassword123",
       hostelId: "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4"
     })

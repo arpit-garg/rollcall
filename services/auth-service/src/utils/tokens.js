@@ -16,7 +16,7 @@ export function createAccessToken(user) {
     {
       sub: user.id,
       role: user.role,
-      hostelId: user.hostelId || user.hostel_id
+      hostelId: user.hostelId ?? user.hostel_id ?? null
     },
     env.jwtSecret,
     { expiresIn: env.accessTokenTtl }

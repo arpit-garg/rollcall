@@ -7,6 +7,7 @@ import ActionButton from "../components/ActionButton";
 import SectionCard from "../components/SectionCard";
 import { normalizeErrorMessage } from "../utils/helpers";
 import { useAuth } from "../state/AuthContext";
+import { getStudentSignupValidationMessage } from "../utils/studentPortal";
 
 export default function LoginScreen() {
   const { login, signup, getHostels } = useAuth();
@@ -61,10 +62,18 @@ export default function LoginScreen() {
   }
 
   async function handleSignUp() {
-    if (!name || !email || !password || !selectedHostelId) {
-      setErrorMessage("Name, email, password, and hostel are required.");
+    const validationMessage = getStudentSignupValidationMessage({
+      name,
+      email,
+      password,
+      hostelId: selectedHostelId
+    });
+
+    if (validationMessage) {
+      setErrorMessage(validationMessage);
       return;
     }
+
     setErrorMessage("");
     setIsSubmitting(true);
     try {
@@ -119,7 +128,7 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               onFocus={() => setFocusedField("email")}
               onBlur={() => setFocusedField("")}
-              placeholder="student@college.edu"
+              placeholder="student@nitj.ac.in"
               placeholderTextColor="#475569"
             />
 
@@ -197,7 +206,7 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               onFocus={() => setFocusedField("email")}
               onBlur={() => setFocusedField("")}
-              placeholder="aarav.sharma@college.edu"
+              placeholder="aarav.sharma@nitj.ac.in"
               placeholderTextColor="#475569"
             />
 
@@ -260,6 +269,9 @@ export default function LoginScreen() {
               placeholder="A-102"
               placeholderTextColor="#475569"
             />
+            <Text style={styles.inputHint}>
+              Optional if your room allocation is pending.
+            </Text>
 
             {errorMessage ? (
               <View style={styles.errorBanner}>

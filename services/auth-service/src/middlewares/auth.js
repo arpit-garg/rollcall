@@ -64,7 +64,7 @@ export function requireAuth(allowedRoles = []) {
 
       req.user = user;
 
-      if (allowedRoles.length > 0 && !allowedRoles.includes(req.user.role)) {
+      if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
         return res.status(403).json({
           error: {
             code: "FORBIDDEN",

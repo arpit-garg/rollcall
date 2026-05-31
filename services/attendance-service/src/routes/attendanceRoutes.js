@@ -3,7 +3,9 @@ import multer from "multer";
 import {
   createAttendanceOverride,
   createSubmission,
+  getChildAttendanceForParent,
   getHistory,
+  getHostelStudentAttendanceSummary,
   getJob,
   getOverrides
 } from "../services/attendanceService.js";
@@ -191,6 +193,46 @@ router.get("/my-history", async (req, res, next) => {
   try {
     return res.status(200).json({
       data: await getHistory(req.user.id)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/children", async (req, res, next) => {
+  if (req.user.role !== "parent") {
+    return res.status(403).json({
+      error: {
+        code: "FORBIDDEN",
+        message: "Only parents can view linked child attendance",
+        retryable: false
+      }
+    });
+  }
+
+  try {
+    return res.status(200).json({
+      data: await getChildAttendanceForParent(req.user.id)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/students/summary", async (req, res, next) => {
+  if (req.user.role !== "warden") {
+    return res.status(403).json({
+      error: {
+        code: "FORBIDDEN",
+        message: "Only wardens can view student attendance summaries",
+        retryable: false
+      }
+    });
+  }
+
+  try {
+    return res.status(200).json({
+      data: await getHostelStudentAttendanceSummary(req.user.hostelId)
     });
   } catch (error) {
     return next(error);

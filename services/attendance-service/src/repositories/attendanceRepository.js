@@ -270,3 +270,82 @@ export async function listOverrides(hostelId) {
     overrideAt: row.override_at
   }));
 }
+
+export async function listHostelStudentSummaries(hostelId) {
+  const { rows } = await pool.query(
+    `
+      SELECT
+        u.id AS student_id,
+        u.name AS student_name,
+        u.room_number,
+        (
+          SELECT COUNT(*)::int
+          FROM attendance_records ar
+          INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+          WHERE ar.student_id = u.id
+            AND aw.hostel_id = $1
+            AND ar.status = 'verified'
+        ) AS verified_count,
+        (
+          SELECT COUNT(*)::int
+          FROM attendance_records ar
+          INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+          WHERE ar.student_id = u.id
+            AND aw.hostel_id = $1
+            AND ar.status = 'failed'
+        ) AS failed_count,
+        (
+          SELECT COUNT(*)::int
+          FROM attendance_records ar
+          INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+          WHERE ar.student_id = u.id
+            AND aw.hostel_id = $1
+            AND ar.status = 'pending'
+        ) AS pending_count,
+        (
+          SELECT COUNT(*)::int
+          FROM attendance_records ar
+          INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+          WHERE ar.student_id = u.id
+            AND aw.hostel_id = $1
+            AND ar.status = 'overridden'
+        ) AS overridden_count,
+        (
+          SELECT ar.status
+          FROM attendance_records ar
+          INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+          WHERE ar.student_id = u.id
+            AND aw.hostel_id = $1
+          ORDER BY ar.submitted_at DESC
+          LIMIT 1
+        ) AS last_status,
+        (
+          SELECT ar.submitted_at
+          FROM attendance_records ar
+          INNER JOIN attendance_windows aw ON aw.id = ar.window_id
+          WHERE ar.student_id = u.id
+            AND aw.hostel_id = $1
+          ORDER BY ar.submitted_at DESC
+          LIMIT 1
+        ) AS last_submitted_at
+      FROM users u
+      WHERE u.role = 'student'
+        AND u.hostel_id = $1
+        AND u.is_active = true
+      ORDER BY u.name ASC
+    `,
+    [hostelId]
+  );
+
+  return rows.map((row) => ({
+    studentId: row.student_id,
+    studentName: row.student_name,
+    roomNumber: row.room_number,
+    verifiedCount: row.verified_count,
+    failedCount: row.failed_count,
+    pendingCount: row.pending_count,
+    overriddenCount: row.overridden_count,
+    lastStatus: row.last_status,
+    lastSubmittedAt: row.last_submitted_at
+  }));
+}

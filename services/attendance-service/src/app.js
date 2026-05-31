@@ -5,6 +5,7 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 import { requireAuth } from "./middlewares/auth.js";
 import { attendanceRoutes } from "./routes/attendanceRoutes.js";
 import { enrollmentRoutes } from "./routes/enrollmentRoutes.js";
+import { leaveRoutes } from "./routes/leaveRoutes.js";
 import { notificationRoutes } from "./routes/notificationRoutes.js";
 import { windowRoutes } from "./routes/windowRoutes.js";
 import { getVerificationQueueStatus } from "./services/verificationQueue.js";
@@ -36,9 +37,10 @@ export function createApp() {
   });
 
   app.use("/api/v1/enrollment", requireAuth(["student", "warden"]), enrollmentRoutes);
+  app.use("/api/v1/leaves", requireAuth(["student", "parent"]), leaveRoutes);
   app.use("/api/v1/notifications", requireAuth(["student"]), notificationRoutes);
   app.use("/api/v1/windows", requireAuth(["warden"]), windowRoutes);
-  app.use("/api/v1/attendance", requireAuth(["student", "warden"]), attendanceRoutes);
+  app.use("/api/v1/attendance", requireAuth(["student", "warden", "parent"]), attendanceRoutes);
   app.use(errorHandler);
 
   return app;
