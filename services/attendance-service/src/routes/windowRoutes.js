@@ -3,6 +3,7 @@ import {
   closeWindow,
   listHostelWindows,
   listRecordsForWindow,
+  listRosterForWindow,
   openWindow
 } from "../services/windowService.js";
 
@@ -71,6 +72,16 @@ router.get("/:id/records", async (req, res, next) => {
   try {
     return res.status(200).json({
       data: await listRecordsForWindow(req.params.id, req.user.hostelId)
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/:id/roster", async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      data: await listRosterForWindow(req.params.id, req.user.hostelId)
     });
   } catch (error) {
     return next(error);

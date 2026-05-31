@@ -30,6 +30,7 @@ import {
   getWindowNotificationMessage,
   getWindowOpenedNotification
 } from "../utils/windowNotifications";
+import { removeReadNotification } from "../utils/notifications";
 import { getVerificationResultMessage } from "../utils/attendanceMessages";
 import { getBestLocationFix, MAX_GPS_ACCURACY_METRES } from "../utils/location";
 import {
@@ -125,6 +126,9 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
   const [screenMessage, setScreenMessage] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationTrayOpen, setIsNotificationTrayOpen] = useState(false);
+  const [notificationActionId, setNotificationActionId] = useState("");
   const [enrollmentStatus, setEnrollmentStatus] = useState({ status: "unknown" });
   const [currentWindow, setCurrentWindow] = useState(null);
   const [history, setHistory] = useState([]);
@@ -145,6 +149,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
   });
   const currentWindowRef = useRef(null);
   const hasLoadedCurrentWindowRef = useRef(false);
+  const lastAnnouncedNotificationIdRef = useRef(null);
 
   // Tab State
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, leave, history, id
@@ -224,21 +229,21 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
 
   async function loadUnreadNotifications() {
     const response = await authorizedRequest("/notifications/unread");
-    const notifications = response.data || [];
-    const windowNotification = notifications.find((notification) => notification.type === "attendance_window_opened");
+    const unreadNotifications = response.data || [];
+    const windowNotification = unreadNotifications.find((notification) => notification.type === "attendance_window_opened");
 
-    if (windowNotification) {
+    setNotifications(unreadNotifications);
+
+    if (windowNotification && lastAnnouncedNotificationIdRef.current !== windowNotification.id) {
       const message = getWindowNotificationMessage(windowNotification);
       if (message) {
         setScreenMessage(message);
       }
 
-      await authorizedRequest(`/notifications/${windowNotification.id}/read`, {
-        method: "PATCH"
-      }).catch(() => null);
+      lastAnnouncedNotificationIdRef.current = windowNotification.id;
     }
 
-    return notifications;
+    return unreadNotifications;
   }
 
   async function refreshDashboard(showLoader = true) {
@@ -496,6 +501,25 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     }
   }
 
+  async function markNotificationRead(notificationId) {
+    if (!notificationId || notificationActionId) {
+      return;
+    }
+
+    setNotificationActionId(notificationId);
+
+    try {
+      await authorizedRequest(`/notifications/${notificationId}/read`, {
+        method: "PATCH"
+      });
+      setNotifications((currentNotifications) => removeReadNotification(currentNotifications, notificationId));
+    } catch (error) {
+      setScreenMessage(normalizeErrorMessage(error));
+    } finally {
+      setNotificationActionId("");
+    }
+  }
+
   const latestHistoryRecord = history[0] || null;
   const pendingLeaveCount = leaveRequests.filter((request) => request.status === "pending").length;
   const enrollmentLabel =
@@ -550,14 +574,91 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                   <Text style={styles.eyebrow}>RESIDENT DASHBOARD</Text>
                   <Text style={styles.heading}>Hi, {user.name.split(" ")[0]}</Text>
                 </View>
-                <Pressable onPress={() => refreshDashboard()} disabled={isRefreshing} style={styles.refreshBadge}>
-                  <Ionicons name={isRefreshing ? "sync" : "refresh-outline"} size={16} color="#06B6D4" style={isRefreshing ? styles.refreshSpinning : null} />
-                  <Text style={styles.refreshBadgeText}>{isRefreshing ? "SYNCING..." : "SYNC"}</Text>
-                </Pressable>
+                <View style={styles.heroControls}>
+                  <Pressable
+                    onPress={() => setIsNotificationTrayOpen((isOpen) => !isOpen)}
+                    style={({ pressed }) => [
+                      styles.notificationBell,
+                      isNotificationTrayOpen ? styles.notificationBellActive : null,
+                      pressed ? styles.buttonPressed : null
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open notifications"
+                  >
+                    <Ionicons
+                      name={notifications.length > 0 ? "notifications" : "notifications-outline"}
+                      size={18}
+                      color={notifications.length > 0 ? "#081f29" : "#06B6D4"}
+                    />
+                    {notifications.length > 0 ? (
+                      <View style={styles.notificationBadge}>
+                        <Text style={styles.notificationBadgeText}>{notifications.length > 9 ? "9+" : notifications.length}</Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  <Pressable onPress={() => refreshDashboard()} disabled={isRefreshing} style={styles.refreshBadge}>
+                    <Ionicons name={isRefreshing ? "sync" : "refresh-outline"} size={16} color="#06B6D4" style={isRefreshing ? styles.refreshSpinning : null} />
+                    <Text style={styles.refreshBadgeText}>{isRefreshing ? "SYNCING..." : "SYNC"}</Text>
+                  </Pressable>
+                </View>
               </View>
               <Text style={styles.copy}>
                 Track attendance windows, face registration, leave requests, and your resident pass.
               </Text>
+
+              {isNotificationTrayOpen ? (
+                <View style={styles.notificationTray}>
+                  <View style={styles.notificationTrayHeader}>
+                    <View>
+                      <Text style={styles.notificationTrayTitle}>Notifications</Text>
+                      <Text style={styles.notificationTraySubtitle}>
+                        {notifications.length > 0 ? "Tap a notification to mark it read." : "No unread notifications."}
+                      </Text>
+                    </View>
+                    <Ionicons name="mail-open-outline" size={18} color="#7dd3fc" />
+                  </View>
+
+                  {notifications.length === 0 ? (
+                    <View style={styles.notificationEmptyState}>
+                      <Ionicons name="checkmark-circle-outline" size={22} color="#34d399" />
+                      <Text style={styles.notificationEmptyText}>All caught up.</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.notificationList}>
+                      {notifications.map((notification) => {
+                        const notificationMessage = getWindowNotificationMessage(notification) || notification.message;
+                        const isReading = notificationActionId === notification.id;
+
+                        return (
+                          <Pressable
+                            key={notification.id}
+                            onPress={() => markNotificationRead(notification.id)}
+                            disabled={Boolean(notificationActionId)}
+                            style={({ pressed }) => [
+                              styles.notificationItem,
+                              pressed ? styles.buttonPressed : null,
+                              isReading ? styles.notificationItemBusy : null
+                            ]}
+                          >
+                            <View style={styles.notificationItemIcon}>
+                              {isReading ? (
+                                <ActivityIndicator size="small" color="#06B6D4" />
+                              ) : (
+                                <Ionicons name="megaphone-outline" size={16} color="#06B6D4" />
+                              )}
+                            </View>
+                            <View style={styles.notificationItemBody}>
+                              <Text style={styles.notificationItemTitle}>{notification.title || "Notification"}</Text>
+                              <Text style={styles.notificationItemMessage}>{notificationMessage}</Text>
+                            </View>
+                            <Text style={styles.notificationReadText}>READ</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              ) : null}
               
               <View style={styles.heroActions}>
                 <ActionButton 

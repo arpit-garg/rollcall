@@ -4,6 +4,7 @@ import {
   closeWindow as closeWindowRecord,
   createWindow as createWindowRecord,
   getWindowRecords,
+  getWindowRoster,
   findActiveWindow,
   listWindows,
   findOverlappingWindow
@@ -78,4 +79,8 @@ export async function getCurrentWindowForHostel(hostelId) {
 
 export async function listRecordsForWindow(windowId, hostelId) {
   return getWindowRecords(windowId, hostelId);
+}
+
+export async function listRosterForWindow(windowId, hostelId) {
+  return getWindowRoster(windowId, hostelId);
 }

@@ -166,6 +166,135 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 4
   },
+  heroControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  notificationBell: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(56, 189, 248, 0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.24)",
+    position: "relative"
+  },
+  notificationBellActive: {
+    backgroundColor: palette.accent,
+    borderColor: palette.accent
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f97316",
+    borderWidth: 2,
+    borderColor: "rgba(16, 27, 34, 0.96)",
+    paddingHorizontal: 4
+  },
+  notificationBadgeText: {
+    color: "#fff7ed",
+    fontSize: 9,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"]
+  },
+  notificationTray: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(56, 189, 248, 0.2)",
+    backgroundColor: "rgba(3, 7, 18, 0.36)",
+    padding: 12,
+    gap: 10
+  },
+  notificationTrayHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  notificationTrayTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0
+  },
+  notificationTraySubtitle: {
+    color: palette.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2
+  },
+  notificationEmptyState: {
+    minHeight: 54,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(52, 211, 153, 0.18)",
+    backgroundColor: "rgba(16, 185, 129, 0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8
+  },
+  notificationEmptyText: {
+    color: "#bbf7d0",
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  notificationList: {
+    gap: 8
+  },
+  notificationItem: {
+    minHeight: 64,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.08)",
+    backgroundColor: "rgba(16, 27, 34, 0.8)",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  notificationItemBusy: {
+    opacity: 0.65
+  },
+  notificationItemIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(56, 189, 248, 0.1)"
+  },
+  notificationItemBody: {
+    flex: 1,
+    gap: 2
+  },
+  notificationItemTitle: {
+    color: palette.text,
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0
+  },
+  notificationItemMessage: {
+    color: palette.textMuted,
+    fontSize: 11,
+    lineHeight: 15
+  },
+  notificationReadText: {
+    color: "#7dd3fc",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0
+  },
   refreshBadge: {
     flexDirection: "row",
     alignItems: "center",

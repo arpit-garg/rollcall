@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import RecordTable from "../components/RecordTable.jsx";
 import SummaryCard from "../components/SummaryCard.jsx";
+import WindowRosterTable from "../components/WindowRosterTable.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
   createDefaultWindowFormValues,
@@ -44,6 +45,7 @@ export default function DashboardPage() {
 
     function handleResolved() {
       queryClient.invalidateQueries({ queryKey: ["window-records"] });
+      queryClient.invalidateQueries({ queryKey: ["window-roster"] });
       queryClient.invalidateQueries({ queryKey: ["queue-health"] });
     }
 
@@ -79,6 +81,16 @@ export default function DashboardPage() {
     refetchInterval: selectedWindowId ? 3000 : false
   });
 
+  const rosterQuery = useQuery({
+    queryKey: ["window-roster", selectedWindowId],
+    enabled: Boolean(selectedWindowId),
+    queryFn: async () => {
+      const response = await authorizedRequest(`/windows/${selectedWindowId}/roster`);
+      return response.data || [];
+    },
+    refetchInterval: selectedWindowId ? 3000 : false
+  });
+
   useEffect(() => {
     if (!windowsQuery.data?.length) {
       setSelectedWindowId("");
@@ -109,6 +121,9 @@ export default function DashboardPage() {
       await queryClient.invalidateQueries({
         queryKey: ["windows"]
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["window-roster"]
+      });
     }
   });
 
@@ -123,6 +138,9 @@ export default function DashboardPage() {
       });
       await queryClient.invalidateQueries({
         queryKey: ["window-records"]
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["window-roster"]
       });
     }
   });
@@ -145,6 +163,9 @@ export default function DashboardPage() {
         queryKey: ["window-records"]
       });
       await queryClient.invalidateQueries({
+        queryKey: ["window-roster"]
+      });
+      await queryClient.invalidateQueries({
         queryKey: ["overrides"]
       });
     }
@@ -152,19 +173,25 @@ export default function DashboardPage() {
 
   const windows = windowsQuery.data || [];
   const records = recordsQuery.data || [];
+  const roster = rosterQuery.data || [];
   const overrides = overridesQuery.data || [];
   const selectedWindow = windows.find((window) => window.id === selectedWindowId) || null;
   const verifiedCount = records.filter((record) => record.status === "verified").length;
   const pendingCount = records.filter((record) => record.status === "pending").length;
   const failedCount = records.filter((record) => record.status === "failed").length;
   const selectedWindowOverrideCount = records.filter((record) => record.status === "overridden").length;
+  const markedCount = roster.filter((record) => record.windowStatus === "marked").length;
+  const onLeaveCount = roster.filter((record) => record.windowStatus === "on_leave").length;
+  const absentCount = roster.filter((record) => record.windowStatus === "absent").length;
   const isBusy =
     windowsQuery.isLoading ||
+    rosterQuery.isLoading ||
     recordsQuery.isLoading ||
     openWindowMutation.isPending ||
     closeWindowMutation.isPending;
   const pageError =
     windowsQuery.error?.message ||
+    rosterQuery.error?.message ||
     recordsQuery.error?.message ||
     overridesQuery.error?.message ||
     openWindowMutation.error?.message ||
@@ -214,13 +241,18 @@ export default function DashboardPage() {
           helper={selectedWindow ? formatWindowLabel(selectedWindow) : "Create a window to begin."}
           accent="#ef8354"
         />
-        <SummaryCard label="Verified" value={String(verifiedCount)} accent="#1f7a5c" />
-        <SummaryCard label="Pending" value={String(pendingCount)} accent="#f6ad55" />
         <SummaryCard
-          label="Overrides"
-          value={String(selectedWindowOverrideCount)}
-          helper={`${overrides.length} total logged`}
-          accent="#118ab2"
+          label="Marked"
+          value={String(markedCount)}
+          helper={`${verifiedCount} verified, ${pendingCount} pending`}
+          accent="#1f7a5c"
+        />
+        <SummaryCard label="On Leave" value={String(onLeaveCount)} accent="#118ab2" />
+        <SummaryCard
+          label="Not Marked"
+          value={String(absentCount)}
+          helper={`${selectedWindowOverrideCount} overrides in selected window`}
+          accent="#d94f70"
         />
       </section>
 
@@ -234,14 +266,23 @@ export default function DashboardPage() {
         <div className="space-y-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Live Attendance Feed</h2>
+              <h2 className="text-xl font-semibold">Selected Window Roster</h2>
               <p className="text-sm text-steel">
-                Records refresh automatically every few seconds for the selected window.
+                Every active student is classified as marked, not marked, or on approved leave.
               </p>
             </div>
             <div className="text-sm text-steel">
               {selectedWindow ? `Window date: ${formatDateTime(selectedWindow.date)}` : "No window selected"}
             </div>
+          </div>
+
+          <WindowRosterTable roster={roster} isLoading={rosterQuery.isLoading} />
+
+          <div>
+            <h2 className="text-xl font-semibold">Submitted Attendance Records</h2>
+            <p className="text-sm text-steel">
+              Use this feed for biometric statuses and failed-record overrides.
+            </p>
           </div>
 
           <RecordTable

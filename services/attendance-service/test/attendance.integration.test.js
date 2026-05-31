@@ -84,6 +84,7 @@ const hostelId = "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4";
 const otherHostelId = "a5a4bff2-179f-4eb1-8bf0-b8959d8a26bb";
 const studentId = "8f71928b-74d0-4dbb-b30a-1e5da85a20fd";
 const sameHostelSecondStudentId = "f394f84f-2c92-4c26-bf87-2b4d0fc6ebca";
+const absentWindowStudentId = "baf24f4a-efdc-4e20-a7a5-4cf6f6e6fd73";
 const otherHostelStudentId = "63db7ce4-ea45-4a4f-823c-cb9ac7ef4d3b";
 const wardenId = "54c1feaf-7bb9-4cc7-ac54-f1ed08dcb22c";
 const otherHostelWardenId = "015ca63a-111a-4f2f-b1e3-2dac3ee22d4e";
@@ -256,6 +257,21 @@ async function ensureParentLink({
   };
 }
 
+async function restoreSeedParentLink() {
+  await pool.query(
+    `
+      INSERT INTO parent_students (parent_id, student_id)
+      SELECT parent.id, student.id
+      FROM users parent
+      CROSS JOIN users student
+      WHERE parent.email = 'parent@college.edu'
+        AND student.email = 'student@college.edu'
+      ON CONFLICT (student_id) DO UPDATE
+      SET parent_id = EXCLUDED.parent_id
+    `
+  );
+}
+
 async function listObjectNames(prefix) {
   const objects = [];
   await new Promise((resolve, reject) => {
@@ -412,7 +428,13 @@ beforeEach(async () => {
         WHERE table_schema = 'public'
           AND table_name = 'leave_requests'
       ) THEN
-        DELETE FROM leave_requests;
+        DELETE FROM leave_requests
+        WHERE parent_id IN (
+          SELECT id FROM users WHERE email LIKE 'test_parent_%@college.edu'
+        )
+        OR student_id IN (
+          SELECT id FROM users WHERE email LIKE 'window_roster_%@college.edu'
+        );
       END IF;
 
       IF EXISTS (
@@ -421,7 +443,13 @@ beforeEach(async () => {
         WHERE table_schema = 'public'
           AND table_name = 'parent_students'
       ) THEN
-        DELETE FROM parent_students;
+        DELETE FROM parent_students
+        WHERE parent_id IN (
+          SELECT id FROM users WHERE email LIKE 'test_parent_%@college.edu'
+        )
+        OR student_id IN (
+          SELECT id FROM users WHERE email LIKE 'window_roster_%@college.edu'
+        );
       END IF;
 
       IF EXISTS (
@@ -450,6 +478,7 @@ beforeEach(async () => {
     END $$;
   `);
   await pool.query("DELETE FROM users WHERE email LIKE 'test_parent_%@college.edu'");
+  await restoreSeedParentLink();
   await pool.query(
     `
       UPDATE users
@@ -482,6 +511,7 @@ beforeEach(async () => {
   await pool.query("DELETE FROM notifications");
   await pool.query("DELETE FROM audit_logs");
   await pool.query("DELETE FROM attendance_records");
+  await pool.query("DELETE FROM users WHERE email LIKE 'window_roster_%@college.edu'");
   await pool.query("DELETE FROM attendance_windows");
   await pool.query(
     `
@@ -519,6 +549,7 @@ beforeEach(async () => {
 });
 
 after(async () => {
+  await restoreSeedParentLink();
   await stopVerificationWorker();
   await new Promise((resolve) => io.close(resolve));
   server.close();
@@ -1027,6 +1058,23 @@ test("linked parents can review their child's leave requests", async () => {
   assert.equal(rows[0].parent_note, "Approved by parent after call");
 });
 
+test("test setup preserves the seeded parent-student link", async () => {
+  const { rows } = await pool.query(
+    `
+      SELECT ps.parent_id, ps.student_id
+      FROM parent_students ps
+      INNER JOIN users parent ON parent.id = ps.parent_id
+      INNER JOIN users student ON student.id = ps.student_id
+      WHERE parent.email = 'parent@college.edu'
+        AND student.email = 'student@college.edu'
+      LIMIT 1
+    `
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].student_id, studentId);
+});
+
 test("linked parents can see only their child's attendance history", async () => {
   const { parentId } = await ensureParentLink();
   const parentAuthHeader = {
@@ -1098,6 +1146,107 @@ test("wardens can fetch student-wise attendance summaries for their hostel", asy
   assert.equal(secondStudent.verifiedCount, 0);
   assert.equal(secondStudent.failedCount, 1);
   assert.equal(secondStudent.lastStatus, "failed");
+});
+
+test("warden window roster classifies marked, approved leave, and absent students", async () => {
+  const windowId = await createWindowForTests();
+  const { parentId } = await ensureParentLink({
+    parentId: "a9bdf7d8-8f58-4ae1-aaf9-4cc6a79b13d4",
+    parentEmail: "test_parent_roster@college.edu",
+    parentName: "Roster Test Parent",
+    linkedStudentId: sameHostelSecondStudentId
+  });
+  const { parentId: markedParentId } = await ensureParentLink({
+    parentId: "c2e5e4aa-44cb-4c40-90e4-6c1233e68bde",
+    parentEmail: "test_parent_marked_roster@college.edu",
+    parentName: "Marked Roster Parent",
+    linkedStudentId: studentId
+  });
+
+  await pool.query(
+    `
+      INSERT INTO users (id, name, email, password_hash, role, hostel_id, room_number, is_active)
+      VALUES (
+        $1,
+        'Window Roster Absent Student',
+        'window_roster_absent@college.edu',
+        '$2a$10$KOm/zgc.9aDfkSfgVJLhhuWWKJfy63F/fAAyYyiTDiy3oKdYJJyUW',
+        'student',
+        $2,
+        'R-404',
+        true
+      )
+    `,
+    [absentWindowStudentId, hostelId]
+  );
+  await pool.query(
+    `
+      INSERT INTO leave_requests (
+        student_id,
+        parent_id,
+        requested_from,
+        requested_to,
+        destination,
+        reason,
+        status,
+        decided_at
+      )
+      SELECT $1, $2, aw.date, aw.date, 'Home', 'Approved roster leave', 'approved', now()
+      FROM attendance_windows aw
+      WHERE aw.id = $3
+    `,
+    [sameHostelSecondStudentId, parentId, windowId]
+  );
+  await pool.query(
+    `
+      INSERT INTO leave_requests (
+        student_id,
+        parent_id,
+        requested_from,
+        requested_to,
+        destination,
+        reason,
+        status,
+        decided_at
+      )
+      SELECT $1, $2, aw.date, aw.date, 'Home', 'Attendance overrides this leave', 'approved', now()
+      FROM attendance_windows aw
+      WHERE aw.id = $3
+    `,
+    [studentId, markedParentId, windowId]
+  );
+
+  await insertAttendanceRecordForStudent({
+    windowId,
+    studentId,
+    status: "verified",
+    submittedAt: "now() - interval '5 minutes'"
+  });
+
+  const response = await jsonRequest(`${baseUrl}/api/v1/windows/${windowId}/roster`, {
+    headers: {
+      ...wardenAuthHeader
+    }
+  });
+
+  assert.equal(response.status, 200, JSON.stringify(response.json));
+  assert.ok(response.json.data.length >= 3);
+
+  const markedStudent = response.json.data.find((record) => record.studentId === studentId);
+  const leaveStudent = response.json.data.find((record) => record.studentId === sameHostelSecondStudentId);
+  const absentStudent = response.json.data.find((record) => record.studentId === absentWindowStudentId);
+
+  assert.equal(markedStudent.windowStatus, "marked");
+  assert.equal(markedStudent.attendanceRecord.status, "verified");
+  assert.equal(markedStudent.leaveApplied, false);
+  assert.equal(markedStudent.leaveRequest.reason, "Attendance overrides this leave");
+  assert.equal(leaveStudent.windowStatus, "on_leave");
+  assert.equal(leaveStudent.attendanceRecord, null);
+  assert.equal(leaveStudent.leaveApplied, true);
+  assert.equal(leaveStudent.leaveRequest.reason, "Approved roster leave");
+  assert.equal(absentStudent.windowStatus, "absent");
+  assert.equal(absentStudent.attendanceRecord, null);
+  assert.equal(absentStudent.leaveRequest, null);
 });
 
 test("enrollment stores template ref in minio and cleans temp object", async () => {
