@@ -7,6 +7,7 @@ import {
   setEnrollmentProcessing,
   upsertEnrolledTemplate
 } from "../repositories/faceTemplatesRepository.js";
+import { env } from "../config/env.js";
 import { findUserById } from "../repositories/usersRepository.js";
 import { objectExists, removeObject } from "./objectStorage.js";
 import { httpError } from "./httpError.js";
@@ -25,6 +26,13 @@ export async function getEnrollmentStatus(studentId) {
   if (
     template?.is_valid &&
     template.enrollment_status !== "processing" &&
+    isRealMlTemplateRequired(template)
+  ) {
+    console.warn(`[Enrollment] Demo template ${template.embedding_ref} cannot be used while real ML verification is enabled; marking student ${studentId} for re-enrollment`);
+    await invalidateTemplate(studentId);
+  } else if (
+    template?.is_valid &&
+    template.enrollment_status !== "processing" &&
     template.embedding_ref?.startsWith("templates/") &&
     !(await objectExists(template.embedding_ref))
   ) {
@@ -33,6 +41,10 @@ export async function getEnrollmentStatus(studentId) {
   }
 
   return getStatusFromDb(studentId);
+}
+
+function isRealMlTemplateRequired(template) {
+  return !env.enableDemoResolution && !template.embedding_ref?.startsWith("templates/");
 }
 
 export async function startEnrollment(studentId) {

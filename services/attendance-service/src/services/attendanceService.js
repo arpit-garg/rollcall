@@ -41,6 +41,12 @@ export async function createSubmission({
     throw httpError(409, "TEMPLATE_NOT_ENROLLED", "Face enrollment is required before attendance");
   }
 
+  if (!env.enableDemoResolution && !template.embedding_ref?.startsWith("templates/")) {
+    console.warn(`[Attendance] Demo template ${template.embedding_ref} cannot be used while real ML verification is enabled; marking student ${studentId} for re-enrollment`);
+    await invalidateTemplate(studentId);
+    throw httpError(409, "TEMPLATE_NOT_ENROLLED", "Face enrollment is required before attendance");
+  }
+
   if (
     template.embedding_ref?.startsWith("templates/") &&
     !(await objectExists(template.embedding_ref))

@@ -27,6 +27,11 @@ import {
   getEnrollmentTone,
   getAttendanceTone
 } from "../utils/helpers";
+import {
+  getWindowNotificationMessage,
+  getWindowOpenedNotification
+} from "../utils/windowNotifications";
+import { getVerificationResultMessage } from "../utils/attendanceMessages";
 import { getBestLocationFix, MAX_GPS_ACCURACY_METRES } from "../utils/location";
 
 // Gorgeous double-sided dynamic Resident ID Card
@@ -125,6 +130,8 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
   const [captureMode, setCaptureMode] = useState(null);
   const [isCaptureBusy, setIsCaptureBusy] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const currentWindowRef = useRef(null);
+  const hasLoadedCurrentWindowRef = useRef(false);
 
   // Tab State
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, history, id
@@ -143,14 +150,64 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
 
   async function loadCurrentWindow() {
     const response = await authorizedRequest("/attendance/current-window");
-    setCurrentWindow(response.data || null);
-    return response.data || null;
+    const nextWindow = response.data || null;
+    const notification = getWindowOpenedNotification({
+      hasLoadedCurrentWindow: hasLoadedCurrentWindowRef.current,
+      previousWindow: currentWindowRef.current,
+      nextWindow
+    });
+
+    currentWindowRef.current = nextWindow;
+    hasLoadedCurrentWindowRef.current = true;
+    setCurrentWindow(nextWindow);
+
+    if (notification) {
+      setScreenMessage(notification);
+    }
+
+    return nextWindow;
   }
 
   async function loadHistory() {
     const response = await authorizedRequest("/attendance/my-history");
-    setHistory(response.data || []);
-    return response.data || [];
+    const records = response.data || [];
+    setHistory(records);
+    setAttendanceJob((currentJob) => {
+      if (!currentJob?.jobId) {
+        return currentJob;
+      }
+
+      const matchingRecord = records.find((record) => record.jobId === currentJob.jobId);
+      if (matchingRecord) {
+        return matchingRecord;
+      }
+
+      if (currentJob.status !== "pending" && records[0]?.jobId !== currentJob.jobId) {
+        return null;
+      }
+
+      return currentJob;
+    });
+    return records;
+  }
+
+  async function loadUnreadNotifications() {
+    const response = await authorizedRequest("/notifications/unread");
+    const notifications = response.data || [];
+    const windowNotification = notifications.find((notification) => notification.type === "attendance_window_opened");
+
+    if (windowNotification) {
+      const message = getWindowNotificationMessage(windowNotification);
+      if (message) {
+        setScreenMessage(message);
+      }
+
+      await authorizedRequest(`/notifications/${windowNotification.id}/read`, {
+        method: "PATCH"
+      }).catch(() => null);
+    }
+
+    return notifications;
   }
 
   async function refreshDashboard(showLoader = true) {
@@ -159,7 +216,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     }
 
     try {
-      await Promise.all([loadEnrollmentStatus(), loadCurrentWindow(), loadHistory()]);
+      await Promise.all([loadEnrollmentStatus(), loadCurrentWindow(), loadHistory(), loadUnreadNotifications()]);
     } catch (error) {
       setScreenMessage(normalizeErrorMessage(error));
     } finally {
@@ -173,7 +230,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
     void refreshDashboard();
 
     const intervalId = setInterval(() => {
-      void loadCurrentWindow().catch(() => null);
+      void Promise.all([loadCurrentWindow(), loadUnreadNotifications()]).catch(() => null);
     }, 10000);
 
     return () => clearInterval(intervalId);
@@ -202,11 +259,7 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
           setAttendanceJob(response);
 
           if (response.status !== "pending") {
-            setScreenMessage(
-              response.status === "verified"
-                ? "Attendance verified successfully."
-                : "Attendance verification finished with a non-verified status."
-            );
+            setScreenMessage(getVerificationResultMessage(response));
             await loadHistory();
             await loadCurrentWindow();
           }
@@ -401,6 +454,13 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
       />
 
       <View style={styles.appShellRoot}>
+        {screenMessage ? (
+          <View style={[styles.messageBanner, styles.shellMessageBanner, gpsLoading ? styles.messageBannerGps : null]}>
+            {gpsLoading ? <ActivityIndicator size="small" color="#06B6D4" style={{ marginRight: 8 }} /> : <Ionicons name="information-circle" size={20} color="#0891b2" style={{ marginRight: 8 }} />}
+            <Text style={styles.messageText}>{screenMessage}</Text>
+          </View>
+        ) : null}
+
         {/* Home Telemetry Dashboard Screen */}
         {activeTab === "dashboard" ? (
           <ScrollView contentContainerStyle={styles.container}>
@@ -428,13 +488,6 @@ export default function DashboardScreen({ user, session, authorizedRequest, logo
                 />
               </View>
             </View>
-
-            {screenMessage ? (
-              <View style={[styles.messageBanner, gpsLoading ? styles.messageBannerGps : null]}>
-                {gpsLoading ? <ActivityIndicator size="small" color="#06B6D4" style={{ marginRight: 8 }} /> : <Ionicons name="information-circle" size={20} color="#0891b2" style={{ marginRight: 8 }} />}
-                <Text style={styles.messageText}>{screenMessage}</Text>
-              </View>
-            ) : null}
 
             {gpsAccuracy !== null ? (
               <View style={[styles.messageBanner, gpsAccuracy <= 30 ? styles.gpsGood : styles.gpsBad]}>

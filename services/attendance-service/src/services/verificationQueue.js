@@ -110,6 +110,11 @@ async function workerLoop() {
 
       try {
         const resolvedRecord = await resolveRecordWithRetry(job.jobId, outcome);
+        console.log(
+          `[Worker] ML verification result job=${job.jobId} student=${job.studentId} ` +
+            `status=${outcome.status} faceScore=${outcome.faceScore ?? "not_scored"} ` +
+            `livenessScore=${outcome.livenessScore ?? "not_scored"}`
+        );
         await removeObjectBestEffort(job.imageObjectKey);
         await redis.lRem(env.verificationProcessingQueueName, 1, payload);
         emitAttendanceResolved({

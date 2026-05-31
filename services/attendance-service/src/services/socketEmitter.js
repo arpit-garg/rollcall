@@ -37,6 +37,9 @@ export function initSocketServer(httpServer) {
 
   io.on("connection", (socket) => {
     socket.join(`hostel:${socket.user.hostelId}`);
+    if (socket.user.role === "student") {
+      socket.join(`hostel:${socket.user.hostelId}:students`);
+    }
     socket.join(`user:${socket.user.id}`);
     console.log(`[socket.io] authenticated client connected: ${socket.id}`);
     socket.on("disconnect", () => {
@@ -58,4 +61,16 @@ export function emitAttendanceResolved(record) {
 export function emitEnrollmentUpdated(studentId, status) {
   if (!io) return;
   io.to(`user:${studentId}`).emit("enrollment:updated", { studentId, status });
+}
+
+export function emitWindowOpened(window) {
+  if (!io || !window?.hostelId) return;
+
+  io.to(`hostel:${window.hostelId}:students`).emit("attendance:window-opened", {
+    id: window.id,
+    hostelId: window.hostelId,
+    opensAt: window.opensAt,
+    closesAt: window.closesAt,
+    message: "Attendance window is now open."
+  });
 }

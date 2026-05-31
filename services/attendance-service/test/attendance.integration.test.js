@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { once } from "node:events";
 import http from "node:http";
 import pg from "pg";
@@ -12,6 +13,9 @@ import {
   resolveMinioEndpoint,
   resolveRedisUrl
 } from "../../test-support/connectionStrings.mjs";
+
+const require = createRequire(import.meta.url);
+const { io: createSocketClient } = require("../../../admin-dashboard/node_modules/socket.io-client/build/cjs/index.js");
 
 process.env.ATTENDANCE_SERVICE_PORT = "0";
 process.env.NODE_ENV = "test";
@@ -67,7 +71,9 @@ const {
 const { resolveAttendanceRecord } = await import("../src/services/attendanceService.js");
 
 const app = createApp();
-const server = app.listen(0);
+const server = http.createServer(app);
+const io = initSocketServer(server);
+server.listen(0);
 
 await once(server, "listening");
 startVerificationWorker();
@@ -77,6 +83,7 @@ const baseUrl = `http://127.0.0.1:${port}`;
 const hostelId = "0f68b6d1-a7cf-47cf-b23e-7e4ff6ca58a4";
 const otherHostelId = "a5a4bff2-179f-4eb1-8bf0-b8959d8a26bb";
 const studentId = "8f71928b-74d0-4dbb-b30a-1e5da85a20fd";
+const sameHostelSecondStudentId = "f394f84f-2c92-4c26-bf87-2b4d0fc6ebca";
 const otherHostelStudentId = "63db7ce4-ea45-4a4f-823c-cb9ac7ef4d3b";
 const wardenId = "54c1feaf-7bb9-4cc7-ac54-f1ed08dcb22c";
 const otherHostelWardenId = "015ca63a-111a-4f2f-b1e3-2dac3ee22d4e";
@@ -104,6 +111,9 @@ const otherHostelWardenAuthHeader = {
 };
 const otherHostelStudentAuthHeader = {
   Authorization: `Bearer ${createToken(otherHostelStudentId, "student", otherHostelId)}`
+};
+const sameHostelSecondStudentAuthHeader = {
+  Authorization: `Bearer ${createToken(sameHostelSecondStudentId, "student")}`
 };
 
 async function jsonRequest(url, options = {}) {
@@ -199,12 +209,94 @@ async function waitFor(assertionFn, timeoutMs = 5000, intervalMs = 200) {
   throw new Error(`Condition not met within ${timeoutMs}ms`);
 }
 
+function connectSocket(token) {
+  return createSocketClient(baseUrl, {
+    auth: {
+      token
+    },
+    transports: ["websocket"],
+    forceNew: true,
+    reconnection: false
+  });
+}
+
+async function waitForSocketConnection(socket) {
+  if (socket.connected) {
+    return;
+  }
+
+  await once(socket, "connect");
+}
+
+function waitForSocketEvent(socket, eventName, timeoutMs = 1000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${eventName}`));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      socket.off(eventName, onEvent);
+    }
+
+    function onEvent(payload) {
+      cleanup();
+      resolve(payload);
+    }
+
+    socket.on(eventName, onEvent);
+  });
+}
+
+function assertNoSocketEvent(socket, eventName, timeoutMs = 250) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off(eventName, onEvent);
+      resolve();
+    }, timeoutMs);
+
+    function onEvent(payload) {
+      clearTimeout(timeout);
+      socket.off(eventName, onEvent);
+      reject(new Error(`Unexpected ${eventName}: ${JSON.stringify(payload)}`));
+    }
+
+    socket.on(eventName, onEvent);
+  });
+}
+
 before(async () => {
   await redis.connect();
   await pool.query(`
     ALTER TABLE face_templates
       ADD COLUMN IF NOT EXISTS enrollment_attempt_id UUID,
       ADD COLUMN IF NOT EXISTS enrollment_status VARCHAR(20) NOT NULL DEFAULT 'idle'
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id),
+      hostel_id UUID NOT NULL REFERENCES hostels(id),
+      type VARCHAR(80) NOT NULL,
+      title VARCHAR(160) NOT NULL,
+      message TEXT NOT NULL,
+      entity_type VARCHAR(60),
+      entity_id UUID,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_type_entity_unique
+      ON notifications (user_id, type, entity_id)
+      WHERE entity_id IS NOT NULL
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS notifications_user_unread_created_at_idx
+      ON notifications (user_id, created_at DESC)
+      WHERE read_at IS NULL
   `);
   await pool.query(`
     DO $$
@@ -258,6 +350,7 @@ beforeEach(async () => {
     [otherHostelStudentId, otherHostelId]
   );
   await pool.query("DELETE FROM overrides");
+  await pool.query("DELETE FROM notifications");
   await pool.query("DELETE FROM audit_logs");
   await pool.query("DELETE FROM attendance_records");
   await pool.query("DELETE FROM attendance_windows");
@@ -298,6 +391,7 @@ beforeEach(async () => {
 
 after(async () => {
   await stopVerificationWorker();
+  await new Promise((resolve) => io.close(resolve));
   server.close();
   await once(server, "close");
   await redis.quit();
@@ -326,6 +420,108 @@ test("warden can open and list windows from postgres", async () => {
 
   assert.equal(currentWindowResponse.status, 200);
   assert.equal(currentWindowResponse.json.data.id, windowId);
+});
+
+test("warden opening a window preserves the requested opening timestamp", async () => {
+  const opensAt = new Date(Date.now() - 45_000).toISOString();
+  const closesAt = new Date(Date.now() + 15 * 60_000).toISOString();
+
+  const response = await jsonRequest(`${baseUrl}/api/v1/windows`, {
+    method: "POST",
+    headers: {
+      ...wardenAuthHeader,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      opens_at: opensAt,
+      closes_at: closesAt
+    })
+  });
+
+  assert.equal(response.status, 201, JSON.stringify(response.json));
+  assert.equal(new Date(response.json.opens_at).toISOString(), opensAt);
+});
+
+test("opening a window notifies connected students in that hostel only", async () => {
+  const studentSocket = connectSocket(createToken(studentId, "student"));
+  const sameHostelWardenSocket = connectSocket(createToken(wardenId, "warden"));
+  const otherHostelStudentSocket = connectSocket(createToken(otherHostelStudentId, "student", otherHostelId));
+
+  try {
+    await Promise.all([
+      waitForSocketConnection(studentSocket),
+      waitForSocketConnection(sameHostelWardenSocket),
+      waitForSocketConnection(otherHostelStudentSocket)
+    ]);
+
+    const studentNotification = waitForSocketEvent(studentSocket, "attendance:window-opened");
+    const wardenNoNotification = assertNoSocketEvent(sameHostelWardenSocket, "attendance:window-opened");
+    const otherHostelNoNotification = assertNoSocketEvent(otherHostelStudentSocket, "attendance:window-opened");
+
+    const windowId = await createWindowForTests();
+    const payload = await studentNotification;
+
+    assert.equal(payload.id, windowId);
+    assert.equal(payload.hostelId, hostelId);
+    assert.equal(payload.message, "Attendance window is now open.");
+
+    await Promise.all([wardenNoNotification, otherHostelNoNotification]);
+  } finally {
+    studentSocket.disconnect();
+    sameHostelWardenSocket.disconnect();
+    otherHostelStudentSocket.disconnect();
+  }
+});
+
+test("opening a window creates unread notifications for every active student in the hostel", async () => {
+  const windowId = await createWindowForTests();
+
+  const firstStudentResponse = await jsonRequest(`${baseUrl}/api/v1/notifications/unread`, {
+    headers: {
+      ...studentAuthHeader
+    }
+  });
+  const secondStudentResponse = await jsonRequest(`${baseUrl}/api/v1/notifications/unread`, {
+    headers: {
+      ...sameHostelSecondStudentAuthHeader
+    }
+  });
+  const otherHostelStudentResponse = await jsonRequest(`${baseUrl}/api/v1/notifications/unread`, {
+    headers: {
+      ...otherHostelStudentAuthHeader
+    }
+  });
+
+  assert.equal(firstStudentResponse.status, 200, JSON.stringify(firstStudentResponse.json));
+  assert.equal(secondStudentResponse.status, 200, JSON.stringify(secondStudentResponse.json));
+  assert.equal(otherHostelStudentResponse.status, 200, JSON.stringify(otherHostelStudentResponse.json));
+
+  assert.equal(firstStudentResponse.json.data.length, 1);
+  assert.equal(secondStudentResponse.json.data.length, 1);
+  assert.equal(otherHostelStudentResponse.json.data.length, 0);
+  assert.equal(firstStudentResponse.json.data[0].type, "attendance_window_opened");
+  assert.equal(firstStudentResponse.json.data[0].entityId, windowId);
+  assert.equal(firstStudentResponse.json.data[0].metadata.closesAt, firstStudentResponse.json.data[0].closesAt);
+
+  const readResponse = await jsonRequest(
+    `${baseUrl}/api/v1/notifications/${firstStudentResponse.json.data[0].id}/read`,
+    {
+      method: "PATCH",
+      headers: {
+        ...studentAuthHeader
+      }
+    }
+  );
+  const unreadAfterReadResponse = await jsonRequest(`${baseUrl}/api/v1/notifications/unread`, {
+    headers: {
+      ...studentAuthHeader
+    }
+  });
+
+  assert.equal(readResponse.status, 200, JSON.stringify(readResponse.json));
+  assert.ok(readResponse.json.readAt);
+  assert.equal(unreadAfterReadResponse.status, 200, JSON.stringify(unreadAfterReadResponse.json));
+  assert.equal(unreadAfterReadResponse.json.data.length, 0);
 });
 
 test("warden cannot open a window with closes_at before opens_at", async () => {
@@ -539,6 +735,42 @@ test("student submit rejects and invalidates a missing stored face template", as
   assert.equal(rows[0].model_version, "failed");
 });
 
+test("student submit rejects demo seed templates when real ML verification is enabled", async () => {
+  await createWindowForTests();
+
+  const originalEnableDemoResolution = env.enableDemoResolution;
+  env.enableDemoResolution = false;
+
+  try {
+    const form = new FormData();
+    form.append("image", new Blob(["demo-image"], { type: "image/jpeg" }), "capture.jpg");
+    form.append("latitude", "28.613939");
+    form.append("longitude", "77.209023");
+    form.append("idempotency_key", "17171717-1717-4717-8717-171717171717");
+
+    const response = await fetch(`${baseUrl}/api/v1/attendance/submit`, {
+      method: "POST",
+      headers: {
+        ...studentAuthHeader
+      },
+      body: form
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 409, JSON.stringify(body));
+    assert.equal(body.error.code, "TEMPLATE_NOT_ENROLLED");
+  } finally {
+    env.enableDemoResolution = originalEnableDemoResolution;
+  }
+
+  const { rows } = await pool.query(
+    "SELECT is_valid, model_version FROM face_templates WHERE student_id = $1",
+    [studentId]
+  );
+  assert.equal(rows[0].is_valid, false);
+  assert.equal(rows[0].model_version, "failed");
+});
+
 test("history and job polling reflect resolved attendance records", async () => {
   await createWindowForTests();
 
@@ -667,6 +899,26 @@ test("enrollment status requires the stored template object to still exist", asy
 
   assert.equal(statusResponse.status, 200);
   assert.equal(statusResponse.json.status, "re_enrollment_required");
+
+  const { rows } = await pool.query(
+    "SELECT is_valid, model_version FROM face_templates WHERE student_id = $1",
+    [studentId]
+  );
+  assert.equal(rows[0].is_valid, false);
+  assert.equal(rows[0].model_version, "failed");
+});
+
+test("enrollment status requires a real template when real ML verification is enabled", async () => {
+  const originalEnableDemoResolution = env.enableDemoResolution;
+  env.enableDemoResolution = false;
+
+  try {
+    const status = await getEnrollmentStatus(studentId);
+
+    assert.equal(status.status, "re_enrollment_required");
+  } finally {
+    env.enableDemoResolution = originalEnableDemoResolution;
+  }
 
   const { rows } = await pool.query(
     "SELECT is_valid, model_version FROM face_templates WHERE student_id = $1",

@@ -227,6 +227,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12
   },
+  shellMessageBanner: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 0
+  },
   messageBannerGps: {
     borderColor: "rgba(6, 182, 212, 0.3)"
   },

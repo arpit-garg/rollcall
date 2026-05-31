@@ -1,4 +1,5 @@
 import { appendAuditLog } from "../repositories/auditLogsRepository.js";
+import { createWindowOpenedNotificationsForHostel } from "../repositories/notificationsRepository.js";
 import {
   closeWindow as closeWindowRecord,
   createWindow as createWindowRecord,
@@ -8,6 +9,7 @@ import {
   findOverlappingWindow
 } from "../repositories/windowsRepository.js";
 import { httpError } from "./httpError.js";
+import { emitWindowOpened } from "./socketEmitter.js";
 
 function parseDateTime(value, fieldName) {
   const parsed = new Date(value);
@@ -49,6 +51,8 @@ export async function openWindow({ hostelId, openedBy, opensAt, closesAt }) {
     opensAt,
     closesAt
   });
+  await createWindowOpenedNotificationsForHostel({ hostelId, window });
+  emitWindowOpened(window);
 
   return window;
 }
